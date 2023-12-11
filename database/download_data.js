@@ -1,9 +1,11 @@
 const ccxt = require('ccxt');
 const fs = require('fs')
 const createCsvWriter = require('csv-writer').createArrayCsvWriter;
-const exchange_limit = JSON.parse(fs.readFileSync('./database/exchange_limit.json', 'utf8'));
-const tf_ms = JSON.parse(fs.readFileSync('./database/tf_ms.json', 'utf8'));
-const coin_list = JSON.parse(fs.readFileSync('./database/coin_list.json', 'utf8'));
+
+const exchange_limit = JSON.parse(fs.readFileSync(`${__dirname}/exchange_limit.json`, 'utf8'));
+const tf_ms = JSON.parse(fs.readFileSync(`${__dirname}/tf_ms.json`, 'utf8'));
+const coin_list = JSON.parse(fs.readFileSync(`${__dirname}/coin_list.json`, 'utf8'));
+
 
 function date_to_timestamp(my_date) {
     my_date = my_date.split("-");
@@ -94,7 +96,7 @@ async function get_ohlcv(exchange, pair_name, timeframe, since_date, limit, tf_m
     result_ohlcv = eliminate_double_ts(result_ohlcv);
 
     let file_pair = pair_name.replace('/', '-');
-    let dirpath = './database/' + exchange_name + '/' + timeframe + '/';
+    let dirpath = `${__dirname}/` + exchange_name + '/' + timeframe + '/';
     let filepath = dirpath + file_pair + ".csv";
 
     let first_date = timestamp_to_date(result_ohlcv[0][0]);
@@ -133,22 +135,38 @@ async function get_multi_ohlcv(exchange, pair_list, tf_list, start_date, exchang
 
 
 // --- Edit exchange here ---
-let exchange = new ccxt.binance({ enableRateLimit: true })
+let exchange = new ccxt.bitget({ enableRateLimit: true })
 
 // --- Edit coin list here ---
-pair_list = ["BTC/USDT", "ETH/USDT", 'ADA/USDT', 'XRP/USDT', 'BNB/USDT', 'LINK/USDT', 'LTC/USDT', "DOGE/USDT", "SOL/USDT", "AVAX/USDT", "DOT/USDT", "LUNA/USDT", "MATIC/USDT", "NEAR/USDT", "EGLD/USDT", "XTZ/USDT", "AAVE/USDT", "UNI/USDT", "FTM/USDT", "BCH/USDT"]
+console.log(process.argv[2]);
+pair = process.argv[2] //['SOL/USDT']
 // pair_list = coin_list['ftx_main_list']
 
 // --- Edit timeframe list and start date here ---
-timeframe_list = ['1h']
-start_date = "01-06-2017"
+timeframe = ['30m']
+//start_date = "01-01-2023"
+start_date =  new Date();
+start_date.setMonth(start_date.getMonth() - 2);
+day = start_date.getDate();
+month = start_date.getMonth() + 1;
+year = start_date.getFullYear();
 
+formated_start_date = `${day}-${month}-${year}`;
 
-get_multi_ohlcv(
-    exchange,
-    pair_list,
-    timeframe_list,
-    start_date,
-    exchange_limit,
-    tf_ms
-)
+// get_multi_ohlcv(
+    // exchange,
+    // pair_list,
+    // timeframe_list,
+    // formated_start_date,
+    // exchange_limit,
+    // tf_ms
+// )
+
+get_ohlcv(
+	exchange,
+	pair,
+	timeframe,
+	formated_start_date,
+	exchange_limit[exchange.name],
+	tf_ms[timeframe]
+	);

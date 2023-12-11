@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import datetime
 import numpy as np
+import sqlite3
 
-def basic_single_asset_backtest(trades, days):
+def basic_single_asset_backtest(pair, trades, days):
     df_trades = trades.copy()
     df_days = days.copy()
     
@@ -46,23 +47,40 @@ def basic_single_asset_backtest(trades, days):
     worst_trade_date1 =  str(df_trades.loc[df_trades['trade_result_pct'] == worst_trade].iloc[0]['open_date'])
     worst_trade_date2 =  str(df_trades.loc[df_trades['trade_result_pct'] == worst_trade].iloc[0]['close_date'])
     
-    print("Period: [{}] -> [{}]".format(df_days.iloc[0]["day"], df_days.iloc[-1]["day"]))
-    print("Initial wallet: {} $".format(round(initial_wallet,2)))
+    period = "[{}] -> [{}]".format(df_days.iloc[0]["day"], df_days.iloc[-1]["day"])
+    # print(f"Period: {period}")
+    # print("Initial wallet: {} $".format(round(initial_wallet,2)))
     
-    print("\n--- General Information ---")
-    print("Final wallet: {} $".format(round(final_wallet,2)))
-    print("Performance vs US dollar: {} %".format(round(vs_usd_pct*100,2)))
-    print("Sharpe Ratio: {}".format(round(sharpe_ratio,2)))
-    print("Worst Drawdown T|D: -{}% | -{}%".format(round(max_trades_drawdown*100, 2), round(max_days_drawdown*100, 2)))
-    print("Buy and hold performance: {} %".format(round(buy_and_hold_pct*100,2)))
-    print("Performance vs buy and hold: {} %".format(round(vs_hold_pct*100,2)))
-    print("Total trades on the period: {}".format(total_trades))
-    print("Global Win rate: {} %".format(round(global_win_rate*100, 2)))
-    print("Average Profit: {} %".format(round(avg_profit*100, 2)))
-    print("Total fees paid {}$".format(round(total_fees, 2)))
+    # print("\n--- General Information ---")
+    # print("Final wallet: {} $".format(round(final_wallet,2)))
+    # print("Performance vs US dollar: {} %".format(round(vs_usd_pct*100,2)))
+    # print("Sharpe Ratio: {}".format(round(sharpe_ratio,2)))
+    # print("Worst Drawdown T|D: -{}% | -{}%".format(round(max_trades_drawdown*100, 2), round(max_days_drawdown*100, 2)))
+    # print("Buy and hold performance: {} %".format(round(buy_and_hold_pct*100,2)))
+    # print("Performance vs buy and hold: {} %".format(round(vs_hold_pct*100,2)))
+    # print("Total trades on the period: {}".format(total_trades))
+    # print("Global Win rate: {} %".format(round(global_win_rate*100, 2)))
+    # print("Average Profit: {} %".format(round(avg_profit*100, 2)))
+    # print("Total fees paid {}$".format(round(total_fees, 2)))
     
-    print("\nBest trades: +{} % the {} -> {}".format(round(best_trade*100, 2), best_trade_date1, best_trade_date2))
-    print("Worst trades: {} % the {} -> {}".format(round(worst_trade*100, 2), worst_trade_date1, worst_trade_date2))
+    # print("\nBest trades: +{} % the {} -> {}".format(round(best_trade*100, 2), best_trade_date1, best_trade_date2))
+    # print("Worst trades: {} % the {} -> {}".format(round(worst_trade*100, 2), worst_trade_date1, worst_trade_date2))
+
+    con = sqlite3.connect('backtesting.db3', detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute('CREATE TABLE IF NOT EXISTS backtesting (pair TEXT NOT NULL, period TEXT, final_wallet NUMERIC, perf_vs_dollar NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
+    
+    cur.execute(f"SELECT pair FROM backtesting WHERE pair = '{pair}'")
+    row_websocket = cur.fetchone()
+    if row_websocket != None:                           
+        sql_update = f"UPDATE backtesting SET period = '{period}', final_wallet = {round(final_wallet,2)}, perf_vs_dollar = {round(vs_usd_pct*100,2)}, total_trades = {total_trades}, win_rate = {round(global_win_rate*100, 2)}, avg_profit = {round(avg_profit*100, 2)}, sharpe_ratio = {round(sharpe_ratio,2)}, worst_drawdown = {round(max_trades_drawdown*100, 2)}, best_trade ={round(best_trade*100, 2)}, worst_trade = {round(worst_trade*100, 2)}, total_fees = {round(total_fees, 2)}, updateDate = '{datetime.datetime.now()}' WHERE pair = '{pair}'"
+        cur.execute(sql_update)   
+    else:
+        sql_insert = f"INSERT INTO backtesting (pair, period, final_wallet, perf_vs_dollar, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate) VALUES ('{pair}', '{period}', {round(final_wallet,2)}, {round(vs_usd_pct*100,2)}, {total_trades}, {round(global_win_rate*100, 2)}, {round(avg_profit*100, 2)}, {round(sharpe_ratio,2)}, {round(max_trades_drawdown*100, 2)}, {round(best_trade*100, 2)}, {round(worst_trade*100, 2)}, {round(total_fees, 2)}, '{datetime.datetime.now()}')"
+        cur.execute(sql_insert)            
+    con.commit()
+    cur.close()
+    con.close()
 
     return df_trades, df_days
 
@@ -104,7 +122,8 @@ def basic_multi_asset_backtest(trades, days):
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
     sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
     
-    print("Period: [{}] -> [{}]".format(df_days.iloc[0]["day"], df_days.iloc[-1]["day"]))
+    period = "[{}] -> [{}]".format(df_days.iloc[0]["day"], df_days.iloc[-1]["day"])
+    print(f"Period: {period}")
     print("Initial wallet: {} $".format(round(initial_wallet,2)))
     print("Trades on {} pairs".format(total_pair_traded))
     
@@ -125,11 +144,20 @@ def basic_multi_asset_backtest(trades, days):
                 "Trades","Pair","Sum-result","Mean-trade","Worst-trade","Best-trade","Win-rate"
                 ))
     print('-' * 95)
+    best_trade = 0
+    worst_trade = 0
     for pair in df_trades["pair"].unique():
         df_pair = df_trades.loc[df_trades["pair"] == pair]
         pair_total_trades = len(df_pair)
         pair_good_trades = len(df_pair.loc[df_pair["trade_result"] > 0])
         pair_worst_trade = str(round(df_pair["trade_result_pct"].min() * 100, 2))+' %'
+
+        if (best_trade < round(df_pair["trade_result_pct"].max() * 100, 2)):
+            best_trade = round(df_pair["trade_result_pct"].max() * 100, 2)
+
+        if (worst_trade > round(df_pair["trade_result_pct"].min() * 100, 2)):
+            worst_trade = round(df_pair["trade_result_pct"].min() * 100, 2)
+        
         pair_best_trade = str(round(df_pair["trade_result_pct"].max() * 100, 2))+' %'
         pair_win_rate = str(round((pair_good_trades / pair_total_trades) * 100, 2))+' %'
         pair_sum_result = str(round(df_pair["trade_result_pct"].sum() * 100, 2))+' %'

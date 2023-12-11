@@ -111,7 +111,7 @@ class ExchangeDataManager:
         if not os.path.exists(file_name):
             raise FileNotFoundError(f"Le fichier {file_name} n'existe pas")
 
-        df = pd.read_csv(file_name, index_col=0, parse_dates=True)
+        df = pd.read_csv(file_name, index_col=0, parse_dates=True, date_format="%Y-%m-%d %H:%M:%S")
         df.index = pd.to_datetime(df.index, unit="ms")
         df = df.groupby(df.index).first()
         df = df.loc[start_date:end_date]
