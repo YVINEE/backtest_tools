@@ -5,7 +5,7 @@ import datetime
 import numpy as np
 import sqlite3
 
-def basic_single_asset_backtest(pair, trades, days):
+def basic_single_asset_backtest(pair, trades, days, last_volume_usdt):
     df_trades = trades.copy()
     df_days = days.copy()
     
@@ -68,15 +68,15 @@ def basic_single_asset_backtest(pair, trades, days):
 
     con = sqlite3.connect('backtesting.db3', detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute('CREATE TABLE IF NOT EXISTS backtesting (pair TEXT NOT NULL, period TEXT, final_wallet NUMERIC, perf_vs_dollar NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
+    cur.execute('CREATE TABLE IF NOT EXISTS backtesting (pair TEXT NOT NULL, period TEXT, final_wallet NUMERIC, last_volume_usdt NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
     
     cur.execute(f"SELECT pair FROM backtesting WHERE pair = '{pair}'")
     row_websocket = cur.fetchone()
     if row_websocket != None:                           
-        sql_update = f"UPDATE backtesting SET period = '{period}', final_wallet = {round(final_wallet,2)}, perf_vs_dollar = {round(vs_usd_pct*100,2)}, total_trades = {total_trades}, win_rate = {round(global_win_rate*100, 2)}, avg_profit = {round(avg_profit*100, 2)}, sharpe_ratio = {round(sharpe_ratio,2)}, worst_drawdown = {round(max_trades_drawdown*100, 2)}, best_trade ={round(best_trade*100, 2)}, worst_trade = {round(worst_trade*100, 2)}, total_fees = {round(total_fees, 2)}, updateDate = '{datetime.datetime.now()}' WHERE pair = '{pair}'"
+        sql_update = f"UPDATE backtesting SET period = '{period}', final_wallet = {round(final_wallet,2)}, last_volume_usdt = {last_volume_usdt}, total_trades = {total_trades}, win_rate = {round(global_win_rate*100, 2)}, avg_profit = {round(avg_profit*100, 2)}, sharpe_ratio = {round(sharpe_ratio,2)}, worst_drawdown = {round(max_trades_drawdown*100, 2)}, best_trade ={round(best_trade*100, 2)}, worst_trade = {round(worst_trade*100, 2)}, total_fees = {round(total_fees, 2)}, updateDate = '{datetime.datetime.now()}' WHERE pair = '{pair}'"
         cur.execute(sql_update)   
     else:
-        sql_insert = f"INSERT INTO backtesting (pair, period, final_wallet, perf_vs_dollar, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate) VALUES ('{pair}', '{period}', {round(final_wallet,2)}, {round(vs_usd_pct*100,2)}, {total_trades}, {round(global_win_rate*100, 2)}, {round(avg_profit*100, 2)}, {round(sharpe_ratio,2)}, {round(max_trades_drawdown*100, 2)}, {round(best_trade*100, 2)}, {round(worst_trade*100, 2)}, {round(total_fees, 2)}, '{datetime.datetime.now()}')"
+        sql_insert = f"INSERT INTO backtesting (pair, period, final_wallet, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate) VALUES ('{pair}', '{period}', {round(final_wallet,2)}, {last_volume_usdt}, {total_trades}, {round(global_win_rate*100, 2)}, {round(avg_profit*100, 2)}, {round(sharpe_ratio,2)}, {round(max_trades_drawdown*100, 2)}, {round(best_trade*100, 2)}, {round(worst_trade*100, 2)}, {round(total_fees, 2)}, '{datetime.datetime.now()}')"
         cur.execute(sql_insert)            
     con.commit()
     cur.close()
