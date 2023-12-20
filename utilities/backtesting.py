@@ -4,6 +4,7 @@ import seaborn as sns
 import datetime
 import numpy as np
 import sqlite3
+import math
 
 def basic_single_asset_backtest(pair, trades, days, last_volume_usdt):
     df_trades = trades.copy()
@@ -38,6 +39,10 @@ def basic_single_asset_backtest(pair, trades, days, last_volume_usdt):
     vs_hold_pct = (final_wallet - buy_and_hold_wallet)/buy_and_hold_wallet
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
     sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
+
+    if math.isnan(sharpe_ratio):
+        sharpe_ratio = -1
+
     total_fees = df_trades['open_fee'].sum() + df_trades['close_fee'].sum()
     
     best_trade = df_trades['trade_result_pct'].max()
@@ -77,6 +82,7 @@ def basic_single_asset_backtest(pair, trades, days, last_volume_usdt):
         cur.execute(sql_update)   
     else:
         sql_insert = f"INSERT INTO backtesting (pair, period, final_wallet, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate) VALUES ('{pair}', '{period}', {round(final_wallet,2)}, {last_volume_usdt}, {total_trades}, {round(global_win_rate*100, 2)}, {round(avg_profit*100, 2)}, {round(sharpe_ratio,2)}, {round(max_trades_drawdown*100, 2)}, {round(best_trade*100, 2)}, {round(worst_trade*100, 2)}, {round(total_fees, 2)}, '{datetime.datetime.now()}')"
+        #print(sql_insert)
         cur.execute(sql_insert)            
     con.commit()
     cur.close()

@@ -146,7 +146,7 @@ pair = process.argv[2] //['SOL/USDT']
 timeframe = ['30m']
 //start_date = "01-01-2023"
 start_date =  new Date();
-start_date.setMonth(start_date.getMonth() - 2);
+start_date.setMonth(start_date.getMonth() - 1);
 day = start_date.getDate();
 month = start_date.getMonth() + 1;
 year = start_date.getFullYear();
