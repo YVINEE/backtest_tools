@@ -39,11 +39,10 @@ def basic_single_asset_backtest(db_name, pair, trades, days, last_volume_usdt, e
     buy_and_hold_wallet = initial_wallet + initial_wallet * buy_and_hold_pct
     vs_hold_pct = (final_wallet - buy_and_hold_wallet)/buy_and_hold_wallet
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
-    sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
-    
-
-    if math.isnan(sharpe_ratio):
+    if df_days['daily_return'].isnull().values.any():
         sharpe_ratio = -1
+    else:
+        sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
 
     total_fees = df_trades['open_fee'].sum() + df_trades['close_fee'].sum()
     
@@ -132,7 +131,10 @@ def basic_multi_asset_backtest(trades, days):
     buy_and_hold_wallet = initial_wallet + initial_wallet * buy_and_hold_pct
     vs_hold_pct = (final_wallet - buy_and_hold_wallet)/buy_and_hold_wallet
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
-    sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
+    if df_days['daily_return'].isnull().values.any():
+        sharpe_ratio = -1
+    else:
+        sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
     
     period = "[{}] -> [{}]".format(df_days.iloc[0]["day"], df_days.iloc[-1]["day"])
     print(f"Period: {period}")
@@ -236,7 +238,11 @@ def get_metrics(df_trades, df_days):
     df_days_copy = df_days.copy()
     df_days_copy['evolution'] = df_days_copy['wallet'].diff()
     df_days_copy['daily_return'] = df_days_copy['evolution']/df_days_copy['wallet'].shift(1)
-    sharpe_ratio = (365**0.5)*(df_days_copy['daily_return'].mean()/df_days_copy['daily_return'].std())
+
+    if df_days_copy['daily_return'].isnull().values.any():
+        sharpe_ratio = -1
+    else:
+        sharpe_ratio = (365**0.5)*(df_days_copy['daily_return'].mean()/df_days_copy['daily_return'].std())
     
     df_days_copy['wallet_ath'] = df_days_copy['wallet'].cummax()
     df_days_copy['drawdown'] = df_days_copy['wallet_ath'] - df_days_copy['wallet']
@@ -389,8 +395,12 @@ def complete_multi_asset_backtest(
     buy_and_hold_wallet = initial_wallet + initial_wallet * buy_and_hold_pct
     vs_hold_pct = (final_wallet - buy_and_hold_wallet)/buy_and_hold_wallet
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
-    sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
-    sortino_ratio = 365**0.5 * (df_days["daily_return"].mean() / df_days["daily_return"][df_days["daily_return"] < 0].std())
+    if df_days['daily_return'].isnull().values.any():
+        sharpe_ratio = -1
+        sortino_ratio = -1
+    else:
+        sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
+        sortino_ratio = 365**0.5 * (df_days["daily_return"].mean() / df_days["daily_return"][df_days["daily_return"] < 0].std())        
     calmar_ratio = (df_days["daily_return"].mean()*365) / max_days_drawdown
     mean_trades_duration = df_trades['trades_duration'].mean()
     mean_trades_per_days = total_trades/total_days
