@@ -39,10 +39,16 @@ def basic_single_asset_backtest(db_name, pair, trades, days, last_volume_usdt, e
     buy_and_hold_wallet = initial_wallet + initial_wallet * buy_and_hold_pct
     vs_hold_pct = (final_wallet - buy_and_hold_wallet)/buy_and_hold_wallet
     vs_usd_pct = (final_wallet - initial_wallet)/initial_wallet
-    if df_days['daily_return'].isnull().values.any():
+    # if df_days['daily_return'].isnull().values.any():
+    #     sharpe_ratio = -1
+    # else:
+    mean = df_days['daily_return'].mean()
+    std = df_days['daily_return'].std()
+    #print(mean, std)
+    if std == 0:
         sharpe_ratio = -1
     else:
-        sharpe_ratio = (365**0.5)*(df_days['daily_return'].mean()/df_days['daily_return'].std())
+        sharpe_ratio = (365**0.5)*(mean/std)
 
     total_fees = df_trades['open_fee'].sum() + df_trades['close_fee'].sum()
     
