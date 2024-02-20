@@ -14,6 +14,7 @@ import datetime
 import subprocess
 import sqlite3
 import glob
+import shutil
 from IPython.display import clear_output
 from utilities.data_manager import ExchangeDataManager
 from utilities.custom_indicators import get_n_columns, SuperTrend
@@ -313,12 +314,15 @@ try:
             out = p.stdout.read()
             print(out)    
 
-    tf = "30m"
+    print('>>> create week_backtesting.db3')
     week_db_name =  os.path.join(database_directory, 'week_backtesting.db3')
     os.remove(week_db_name) if os.path.exists(week_db_name) else None
-    list_env_perc = [0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07]
+    tf = "30m"
+
+    list_source_name = ['close', 'hl2', 'hlc3', 'ohlc4', 'hlcc4']
+    list_env_perc = [0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]
+
     df_btc = bitget.load_data(coin="BTC/USDT", interval=tf)
-    source_name="hl2"
     coef_on_btc_rsi = 1.6
     coef_on_stoch_rsi = 1.3
     for market in markets:
@@ -329,88 +333,60 @@ try:
                 df['volume_usdt'] = df['volume'] * df['close']
                 last_volume_usdt = round(df['volume_usdt'].rolling(window=48).mean().iloc[-1], 2)
                 if (last_volume_usdt >= 1000):
-                    for i in range(0, len(list_env_perc)) :
-                        strat = SaEnvelope( 
-                            df = df.loc[:],
-                            df_btc = df_btc,
-                            type=["long"],
-                            ma_base_window=5,
-                            envelopes=[list_env_perc[i]],
-                            source_name=source_name,
-                            coef_on_btc_rsi=coef_on_btc_rsi,
-                            coef_on_stoch_rsi=coef_on_stoch_rsi            
-                        )
-                        strat.populate_indicators()
-                        strat.populate_buy_sell()
-                        bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
-                        if bt_result is not None:
-                            df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[i], source_name="hl2", coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)  
-
-                            con = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-                            cur = con.cursor()  
-                            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
-                            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
-                            con.commit()
-                            cur.close()
-                            con.close()                        
+                    for i in range(0, len(list_source_name)) :
+                        for j in range(0, len(list_env_perc)) :                        
+                            strat = SaEnvelope( 
+                                df = df.loc[:],
+                                df_btc = df_btc,
+                                type=["long"],
+                                ma_base_window=5,
+                                envelopes=[list_env_perc[j]],
+                                source_name=list_source_name[i],
+                                coef_on_btc_rsi=coef_on_btc_rsi,
+                                coef_on_stoch_rsi=coef_on_stoch_rsi            
+                            )
+                            strat.populate_indicators()
+                            strat.populate_buy_sell()
+                            bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
+                            
+                            if bt_result is not None:
+                                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[j], source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)                        
             except FileNotFoundError:
                 print(f'FileNotFoundError for {market}')
 
-    con = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    print('>>> create profit_week_backtesting.db3')
+    profit_week_db_name =  os.path.join(database_directory, 'profit_week_backtesting.db3')
+    os.remove(profit_week_db_name) if os.path.exists(profit_week_db_name) else None
+    shutil.copyfile(week_db_name, profit_week_db_name)
+
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute(f"SELECT pair, env_perc, last_volume_usdt FROM backtesting ORDER BY usd_per_day DESC LIMIT 50")
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+    con.commit()
+    cur.close()
+    con.close()
+
+    print('>>> optimize env_perc for profit_week_backtesting.db3')
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt FROM backtesting")
     rows = cur.fetchall()
     rows_list = [list(row) for row in rows]
-
     cur.close()
     con.close() 
 
-    list_source_name = ['close', 'hl2', 'hlc3', 'ohlc4', 'hlcc4']
-
     for row in rows_list:
         pair = row[0]
-        env_perc = row[1]
-        last_volume_usdt = row[2]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
         print(pair)
         df = bitget.load_data(coin=pair, interval=tf)
 
-        #test source
-        for i in range(0, len(list_source_name)) :
-            strat = SaEnvelope( 
-                df = df.loc[:],
-                df_btc = df_btc,
-                type=["long"],
-                ma_base_window=5,
-                envelopes=[env_perc],
-                source_name=list_source_name[i],
-                coef_on_btc_rsi=coef_on_btc_rsi,
-                coef_on_stoch_rsi=coef_on_stoch_rsi            
-            )
-            strat.populate_indicators()
-            strat.populate_buy_sell()
-            bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
-            if bt_result is not None:
-                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)          
-
-
         # test env_perc    
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")
-        con_week_db_name.commit()
-        cur_week_db_name.execute(f"SELECT source_name FROM backtesting WHERE pair = '{pair}'")
-        row_week_db_name = cur_week_db_name.fetchone()
-        if row_week_db_name != None:
-            source_name = row_week_db_name[0]
-        else:
-            print(f'WARNING 1 : no row found for {pair}')        
-        cur_week_db_name.close()
-        con_week_db_name.close()  
-
         start_env = round(env_perc - 0.004, 5) #python gros pb d'arrondi avec les float....    
         end_env = round(env_perc + 0.004, 5)
         
@@ -431,33 +407,37 @@ try:
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)          
+                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)          
             
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")    
-        con_week_db_name.commit()
-        cur_week_db_name.close()
-        con_week_db_name.close()         
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+    con.commit()
+    cur.close()
+    con.close()         
+
+    print('>>> optimize coef_on_btc_rsi for profit_week_backtesting.db3')
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi FROM backtesting")
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        coef_on_btc_rsi = row[4]
+        print(pair)
+        df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_btc_rsi    
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"SELECT source_name, env_perc, coef_on_btc_rsi FROM backtesting WHERE pair = '{pair}'")
-        row_week_db_name = cur_week_db_name.fetchone()
-        if row_week_db_name != None:
-            source_name = row_week_db_name[0]
-            env_perc = row_week_db_name[1]
-            coef_on_btc_rsi = row_week_db_name[2]
-        else:
-            print(f'WARNING 2 : no row found for {pair}')
-        cur_week_db_name.close()
-        con_week_db_name.close()  
-
         start_coef_on_btc_rsi = 1   
         end_coef_on_btc_rsi = 3
         
@@ -472,40 +452,45 @@ try:
                     envelopes=[env_perc],
                     source_name=source_name,
                     coef_on_btc_rsi=coef_on_btc_rsi_to_test,
-                    coef_on_stoch_rsi=coef_on_stoch_rsi            
+                    coef_on_stoch_rsi=coef_on_stoch_rsi           
                 )
                 strat.populate_indicators()
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi_to_test, coef_on_stoch_rsi=coef_on_stoch_rsi)          
+                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi_to_test, coef_on_stoch_rsi=coef_on_stoch_rsi)          
             
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")    
-        con_week_db_name.commit()
-        cur_week_db_name.close()
-        con_week_db_name.close() 
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
+    con.commit()
+    cur.close()
+    con.close()          
+
+    print('>>> optimize coef_on_stoch_rsi for profit_week_backtesting.db3')
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting")
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        coef_on_btc_rsi = row[4]
+        coef_on_stoch_rsi = row[5]
+        print(pair)
+        df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_stoch_rsi    
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"SELECT source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair = '{pair}'")
-        row_week_db_name = cur_week_db_name.fetchone()
-        if row_week_db_name != None:
-            source_name = row_week_db_name[0]
-            env_perc = row_week_db_name[1]
-            coef_on_btc_rsi = row_week_db_name[2]
-            coef_on_stoch_rsi = row_week_db_name[3]
-        else:
-            print(f'WARNING 3 : no row found for {pair}')        
-        cur_week_db_name.close()
-        con_week_db_name.close()  
-
         start_coef_on_stoch_rsi = 1   
         end_coef_on_stoch_rsi = 3
         
@@ -520,23 +505,207 @@ try:
                     envelopes=[env_perc],
                     source_name=source_name,
                     coef_on_btc_rsi=coef_on_btc_rsi,
-                    coef_on_stoch_rsi=coef_on_stoch_rsi_to_test            
+                    coef_on_stoch_rsi=coef_on_stoch_rsi_to_test           
                 )
                 strat.populate_indicators()
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi_to_test)          
+                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi_to_test)          
             
-        con_week_db_name = sqlite3.connect(week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-        cur_week_db_name = con_week_db_name.cursor()  
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
-        cur_week_db_name.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")    
-        con_week_db_name.commit()
-        cur_week_db_name.close()
-        con_week_db_name.close()      
+    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{market}')")            
+    con.commit()
+    cur.close()
+    con.close()     
+
+    print('>>> create winrate_week_backtesting.db3')
+    winrate_week_db_name =  os.path.join(database_directory, 'winrate_week_backtesting.db3')
+    os.remove(winrate_week_db_name) if os.path.exists(winrate_week_db_name) else None
+    shutil.copyfile(week_db_name, winrate_week_db_name) 
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND win_rate != 100")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND avg_profit != (SELECT MAX(avg_profit) FROM backtesting WHERE pair = '{market}')")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")      
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")    
+    con.commit()
+    cur.close()
+    con.close()  
+
+    print('>>> optimize env_perc for winrate_week_backtesting.db3')
+    coef_on_btc_rsi = 1.6
+    coef_on_stoch_rsi = 1.3
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt FROM backtesting")
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        print(pair)
+        df = bitget.load_data(coin=pair, interval=tf)
+
+        # test env_perc    
+        start_env = round(env_perc - 0.004, 5) #python gros pb d'arrondi avec les float....    
+        end_env = round(env_perc + 0.004, 5)
+        
+        for i in np.linspace(start_env, end_env, 9):
+            env_perc_to_test = round(i, 5) #python gros pb d'arrondi avec les float....    
+            if env_perc_to_test != env_perc :
+                strat = SaEnvelope( 
+                    df = df.loc[:],
+                    df_btc = df_btc,
+                    type=["long"],
+                    ma_base_window=5,
+                    envelopes=[i],
+                    source_name=source_name,
+                    coef_on_btc_rsi=coef_on_btc_rsi,
+                    coef_on_stoch_rsi=coef_on_stoch_rsi           
+                )
+                strat.populate_indicators()
+                strat.populate_buy_sell()
+                bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
+                if bt_result is not None:
+                    df_trades, df_days = basic_single_asset_backtest(db_name=winrate_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)          
+            
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND win_rate != 100")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND avg_profit != (SELECT MAX(avg_profit) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+    con.commit()
+    cur.close()
+    con.close()  
+
+    print('>>> optimize coef_on_btc_rsi for winrate_week_backtesting.db3')
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi FROM backtesting")
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        coef_on_btc_rsi = row[4]
+        print(pair)
+        df = bitget.load_data(coin=pair, interval=tf)
+
+        # test coef_on_btc_rsi    
+        start_coef_on_btc_rsi = 1   
+        end_coef_on_btc_rsi = 3
+        
+        for i in np.linspace(start_coef_on_btc_rsi, end_coef_on_btc_rsi, 21):
+            coef_on_btc_rsi_to_test = round(i, 2) #python gros pb d'arrondi avec les float....    
+            if coef_on_btc_rsi_to_test != coef_on_btc_rsi :
+                strat = SaEnvelope( 
+                    df = df.loc[:],
+                    df_btc = df_btc,
+                    type=["long"],
+                    ma_base_window=5,
+                    envelopes=[env_perc],
+                    source_name=source_name,
+                    coef_on_btc_rsi=coef_on_btc_rsi_to_test,
+                    coef_on_stoch_rsi=coef_on_stoch_rsi           
+                )
+                strat.populate_indicators()
+                strat.populate_buy_sell()
+                bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
+                if bt_result is not None:
+                    df_trades, df_days = basic_single_asset_backtest(db_name=winrate_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi_to_test, coef_on_stoch_rsi=coef_on_stoch_rsi)          
+            
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND win_rate != 100")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND avg_profit != (SELECT MAX(avg_profit) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
+    con.commit()
+    cur.close()
+    con.close()  
+
+    print('>>> optimize coef_on_stoch_rsi for winrate_week_backtesting.db3')
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting")
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        coef_on_btc_rsi = row[4]
+        coef_on_stoch_rsi = row[5]
+        print(pair)
+        df = bitget.load_data(coin=pair, interval=tf)
+
+        # test coef_on_stoch_rsi    
+        start_coef_on_stoch_rsi = 1   
+        end_coef_on_stoch_rsi = 3
+        
+        for i in np.linspace(start_coef_on_stoch_rsi, end_coef_on_stoch_rsi, 21):
+            coef_on_stoch_rsi_to_test = round(i, 2) #python gros pb d'arrondi avec les float....    
+            if coef_on_stoch_rsi_to_test != coef_on_stoch_rsi :
+                strat = SaEnvelope( 
+                    df = df.loc[:],
+                    df_btc = df_btc,
+                    type=["long"],
+                    ma_base_window=5,
+                    envelopes=[env_perc],
+                    source_name=source_name,
+                    coef_on_btc_rsi=coef_on_btc_rsi,
+                    coef_on_stoch_rsi=coef_on_stoch_rsi_to_test           
+                )
+                strat.populate_indicators()
+                strat.populate_buy_sell()
+                bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
+                if bt_result is not None:
+                    df_trades, df_days = basic_single_asset_backtest(db_name=winrate_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi_to_test)          
+            
+    con = sqlite3.connect(winrate_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for market in markets:
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND win_rate != 100")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND avg_profit != (SELECT MAX(avg_profit) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{market}')")            
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND source_name != (SELECT MAX(source_name) FROM backtesting WHERE pair = '{market}')")            
+    con.commit()
+    cur.close()
+    con.close()  
+
+    shutil.copyfile(winrate_week_db_name, '/home/doku/envelope/database/week_backtesting100.db3')                       
 except:
     print(traceback.format_exc())
