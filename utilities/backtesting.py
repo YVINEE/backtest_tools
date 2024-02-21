@@ -45,10 +45,11 @@ def basic_single_asset_backtest(db_name, pair, trades, days, last_volume_usdt, e
     mean = df_days['daily_return'].mean()
     std = df_days['daily_return'].std()
     #print(mean, std)
-    if std == 0:
+    if std == 0 or math.isnan(std):
         sharpe_ratio = -1
     else:
         sharpe_ratio = (365**0.5)*(mean/std)
+    #print("sharpe_ratio", sharpe_ratio)
 
     total_fees = df_trades['open_fee'].sum() + df_trades['close_fee'].sum()
     
