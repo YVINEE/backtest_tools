@@ -85,7 +85,7 @@ def basic_single_asset_backtest(db_name, pair, trades, days, last_volume_usdt, e
 
     con = sqlite3.connect(db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute('CREATE TABLE IF NOT EXISTS backtesting (pair TEXT NOT NULL, source_name TEXT, env_perc NUMERIC, coef_on_btc_rsi NUMERIC, coef_on_stoch_rsi NUMERIC, startDate timestamp, final_wallet NUMERIC, usd_per_day NUMERIC, last_volume_usdt NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
+    cur.execute('CREATE TABLE IF NOT EXISTS backtesting (pair TEXT NOT NULL, score NUMERIC, source_name TEXT, env_perc NUMERIC, coef_on_btc_rsi NUMERIC, coef_on_stoch_rsi NUMERIC, startDate timestamp, final_wallet NUMERIC, usd_per_day NUMERIC, last_volume_usdt NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
     
     cur.execute(f"SELECT pair FROM backtesting WHERE pair = '{pair}' AND source_name = '{source_name}' AND env_perc = {env_perc} AND coef_on_btc_rsi = {coef_on_btc_rsi} AND coef_on_stoch_rsi = {coef_on_stoch_rsi}")
     row_websocket = cur.fetchone()
