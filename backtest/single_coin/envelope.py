@@ -524,73 +524,11 @@ try:
     con.commit()
     cur.close()
     con.close()                         
-
-    print('>>> read profit_week_backtesting.db3')
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-    cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, usd_per_day FROM backtesting")
-    rows = cur.fetchall()
-    rows_list = [list(row) for row in rows]
-    cur.close()
-    con.close() 
-
-    print('>>> create profit_day_backtesting.db3')
-    profit_day_db_name =  os.path.join(database_directory, 'profit_day_backtesting.db3')
-    os.remove(profit_day_db_name) if os.path.exists(profit_day_db_name) else None
-
-    for row in rows_list:
-        pair = row[0]
-        source_name = row[1]
-        env_perc = row[2]
-        last_volume_usdt = row[3]
-        coef_on_btc_rsi = row[4]
-        coef_on_stoch_rsi = row[5]
-        print(pair)
-        df = bitget.load_data(coin=pair, interval=tf)
-        df = df[-62:] #24h => 48 x 30min + 14 pour stoch = 62
-        
-        strat = SaEnvelope( 
-            df = df.loc[:],
-            df_btc = df_btc,
-            type=["long"],
-            ma_base_window=5,
-            envelopes=[env_perc],
-            source_name=source_name,
-            coef_on_btc_rsi=coef_on_btc_rsi,
-            coef_on_stoch_rsi=coef_on_stoch_rsi           
-        )
-        strat.populate_indicators()
-        strat.populate_buy_sell()
-        bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
-        if bt_result is not None:
-            df_trades, df_days = basic_single_asset_backtest(db_name=profit_day_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi)          
-
-    print('>>> read profit_day_backtesting.db3')
-    con = sqlite3.connect(profit_day_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-    cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, usd_per_day FROM backtesting")
-    rows_day = cur.fetchall()
-    rows_day_list = [list(row) for row in rows_day]
-    cur.close()
-    con.close()          
-
-    print('>>> calculate score')
-    dico_pair = {}
-    for row in rows_list:
-        pair = row[0]
-        usd_per_day = row[6]
-        for row_day in rows_day_list:
-            if row_day[0] == pair:
-                usd_per_day += 2*row_day[6]
-                break
-        dico_pair[pair] = usd_per_day
-    dico_score = dict(sorted(dico_pair.items(), key=lambda item: item[1], reverse=True))
-
+  
     print('>>> update score in profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
-    for pair, score in dico_score.items():  
-        cur.execute(f"UPDATE backtesting SET score = {score} WHERE pair = '{pair}'")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown")
     con.commit()
     cur.close()    
     con.close() 
@@ -598,6 +536,7 @@ try:
     backtest_path = '/home/doku/envelope/database/week_backtesting100.db3'
     shutil.copyfile(profit_week_db_name, backtest_path)
 
+    print('>>> generate pinescript')
     bot_script_directory = '/home/doku/envelope'
     database_path = os.path.join(bot_script_directory, 'database')
     config_database_path = os.path.join(database_path, 'config.db3')
@@ -630,7 +569,7 @@ try:
         cur.execute("PRAGMA read_uncommitted = true;");     
         
         sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in}
-                UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 20"""
+                UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 30"""
 
         #print(sql)
         res = cur.execute(sql)
