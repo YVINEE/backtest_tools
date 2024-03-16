@@ -56,7 +56,26 @@ try:
             elif source_name == "ohlc4":
                 return (df['open'] + df['high'] + df['low'] + df['close']) / 4
             elif source_name == "hlcc4":
-                return (df['high'] + df['low'] + df['close'] + df['close']) / 4   
+                return (df['high'] + df['low'] + df['close'] + df['close']) / 4
+            
+        def fast_rsi(self, rsi_source_input, rsi_length_input):
+            diff = rsi_source_input.diff(1)
+
+            #calcul up
+            up_direction = diff.where(diff > 0, 0.0)
+            emaup = up_direction.ewm(span=rsi_length_input, min_periods=rsi_length_input, adjust=False).mean()
+
+            #calcul down
+            down_direction = -diff.where(diff < 0, 0.0)
+            emadn = down_direction.ewm(span=rsi_length_input, min_periods=rsi_length_input, adjust=False).mean()
+
+            #calcul rsi
+            relative_strength = emaup / emadn
+            rsi = pd.Series(
+                np.where(emadn == 0, 100, 100 - (100 / (1 + relative_strength))),
+                index=rsi_source_input.index,
+            )
+            return rsi                
             
         def populate_indicators(self):
             # -- Clear dataset --
@@ -67,8 +86,8 @@ try:
             )
 
             df_btc = self.df_btc
-            # -- Populate indicators --            
-            df_btc['rsi'] = ta.momentum.RSIIndicator(close=df_btc['close'], window=14).rsi().shift(1)
+            # -- Populate indicators --                        
+            df_btc['rsi'] = self.fast_rsi(df_btc['close'], 14).shift(1)
             df_btc['coef_low_env'] = 1.0
             df_btc.loc[(df_btc['rsi'] <= 30), 'coef_low_env'] = self.coef_on_btc_rsi  
             df_btc['coef_high_env'] = 1.0
@@ -528,7 +547,7 @@ try:
     print('>>> update score in profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
-    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 20 AND worst_drawdown <= 10")
     con.commit()
     cur.close()    
     con.close() 
@@ -536,56 +555,94 @@ try:
     backtest_path = '/home/doku/envelope/database/week_backtesting100.db3'
     shutil.copyfile(profit_week_db_name, backtest_path)
 
-    print('>>> generate pinescript')
-    bot_script_directory = '/home/doku/envelope'
-    database_path = os.path.join(bot_script_directory, 'database')
-    config_database_path = os.path.join(database_path, 'config.db3')
+    print('>>> update config according week_backtesting100')
+    config_database_path = '/home/doku/envelope/database/config.db3'
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
         cur = con.cursor()  
         cur.execute("PRAGMA read_uncommitted = true;");     
         
-        sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi FROM config ORDER BY coin"
+        sql = "SELECT coin FROM config ORDER BY coin"
         res = cur.execute(sql)
         rows = cur.fetchall()
         rows_list = [list(row) for row in rows]
         cur.close()
-
-    pattern = "        if (pair == '{pair}')"
-    pattern += "\n            result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi})\n"""    
-
-    pinescript = "GetConfig(string pair, config_input) =>"
-    pinescript += '\n    config result = na\n'        
-    pinescript += '\n    if config_input == "Bot"\n'
 
     pair_list = []
-    for row in rows_list:
-        pinescript += pattern.format(pair=row[0].replace('$','') + 'USDT', source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4])
+    for row in rows_list:    
         pair_list.append(f"'{row[0]}/USDT'")
+    sql_in = '(' + ', '.join(pair for pair in pair_list) + ')'     
 
-    sql_in = '(' + ', '.join(pair for pair in pair_list) + ')' 
-    pinescript += '\n    if config_input == "Backtest"\n'
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
         cur = con.cursor()  
-        cur.execute("PRAGMA read_uncommitted = true;");     
-        
-        sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in}
-                UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 30"""
-
-        #print(sql)
+        cur.execute("PRAGMA read_uncommitted = true;");         
+        sql = f"SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in} ORDER BY pair"
         res = cur.execute(sql)
         rows = cur.fetchall()
         rows_list = [list(row) for row in rows]
         cur.close()
 
-    for row in rows_list:
-        pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4])
-    
-    pinescript += '\n    result\n'
-    print(pinescript)
-    pinescript_path = os.path.join(bot_script_directory, 'pinescript.txt')
-    text_file = open(pinescript_path, "w")
-    text_file.write(pinescript)
-    text_file.close()                             
+    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+        cur = con.cursor()  
+        for row in rows_list:
+            coin = row[0].replace('/USDT','') 
+            sma_source = row[1]
+            envelope_percent = row[2]
+            coef_on_btc_rsi = row[3]
+            coef_on_stoch_rsi = row[4]
+            sma_length = 5
+            timeframe = '30min'
+            sql = f"REPLACE INTO config(coin, sma_source, sma_length, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, timeframe) VALUES('{coin}', '{sma_source}', {sma_length}, {envelope_percent}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, '{timeframe}')"    
+            res = cur.execute(sql)
+        con.commit()    
+        cur.close()    
+
+        print('>>> generate pinescript')
+        bot_script_directory = '/home/doku/envelope'
+        database_path = os.path.join(bot_script_directory, 'database')
+        config_database_path = os.path.join(database_path, 'config.db3')
+        with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+            cur = con.cursor()  
+            cur.execute("PRAGMA read_uncommitted = true;");     
+            
+            sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi FROM config ORDER BY coin"
+            res = cur.execute(sql)
+            rows = cur.fetchall()
+            rows_list = [list(row) for row in rows]
+            cur.close()
+
+        pattern = "    if (pair == '{pair}')"
+        pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi})\n"""    
+
+        pinescript = "GetBotConfig(string pair) =>"
+        pinescript += '\n    config result = na\n'        
+
+        pair_list = []
+        for row in rows_list:
+            pair_list.append(f"'{row[0]}/USDT'")
+
+        sql_in = '(' + ', '.join(pair for pair in pair_list) + ')' 
+        with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
+            cur = con.cursor()  
+            cur.execute("PRAGMA read_uncommitted = true;");     
+            
+            sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in}
+                    UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 30"""
+
+            #print(sql)
+            res = cur.execute(sql)
+            rows = cur.fetchall()
+            rows_list = [list(row) for row in rows]
+            cur.close()
+
+        for row in rows_list:
+            pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4])
+
+        pinescript += '\n    result\n'
+        print(pinescript)
+        pinescript_path = os.path.join(bot_script_directory, 'pinescript.txt')
+        text_file = open(pinescript_path, "w")
+        text_file.write(pinescript)
+        text_file.close()                            
                           
 except:
     print(traceback.format_exc())
