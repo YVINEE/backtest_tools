@@ -1,5 +1,6 @@
 import os
 import sys
+import mailtrap as mt
 node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
 script_directory = os.path.dirname(__file__)
 parent_directory = os.path.dirname(script_directory)
@@ -96,12 +97,12 @@ try:
             df = df.merge(df_btc_coef_env,how='left', left_on='date', right_on='date')
 
             df['k'] = ta.momentum.StochRSIIndicator(df['close']).stochrsi_k().shift(1)
-            df.loc[(df['k'] >= 0.75), 'coef_low_env'] = self.coef_on_stoch_rsi
+            df.loc[(df['k'] >= 0.75) & (df['coef_low_env'] < self.coef_on_stoch_rsi), 'coef_low_env'] = self.coef_on_stoch_rsi
+            df.loc[(df['k'] <= 0.25) & (df['coef_high_env'] < self.coef_on_stoch_rsi), 'coef_high_env'] = self.coef_on_stoch_rsi            
 
             src = self.get_source(df, self.source_name) 
             df['ma_base'] = ta.trend.sma_indicator(close=src, window=self.ma_base_window).shift(1)
             high_envelopes = [round(1/(1-e)-1, 3) for e in self.envelopes]
-            # low_envelopes = [round(abs(1/(1+e)-1), 3) for e in self.envelopes]
             for i in range(1, len(self.envelopes) + 1):
                 df[f'ma_high_{i}'] = df['ma_base'] * (1 + df['coef_high_env']*high_envelopes[i-1])
                 df[f'ma_low_{i}'] = df['ma_base'] * (1 - df['coef_low_env']*self.envelopes[i-1])
@@ -596,53 +597,67 @@ try:
         con.commit()    
         cur.close()    
 
-        print('>>> generate pinescript')
-        bot_script_directory = '/home/doku/envelope'
-        database_path = os.path.join(bot_script_directory, 'database')
-        config_database_path = os.path.join(database_path, 'config.db3')
-        with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
-            cur = con.cursor()  
-            cur.execute("PRAGMA read_uncommitted = true;");     
-            
-            sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi FROM config ORDER BY coin"
-            res = cur.execute(sql)
-            rows = cur.fetchall()
-            rows_list = [list(row) for row in rows]
-            cur.close()
+    print('>>> generate pinescript')
+    bot_script_directory = '/home/doku/envelope'
+    database_path = os.path.join(bot_script_directory, 'database')
+    config_database_path = os.path.join(database_path, 'config.db3')
+    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");     
+        
+        sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi FROM config ORDER BY coin"
+        res = cur.execute(sql)
+        rows = cur.fetchall()
+        rows_list = [list(row) for row in rows]
+        cur.close()
 
-        pattern = "    if (pair == '{pair}')"
-        pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi})\n"""    
+    pattern = "    if (pair == '{pair}')"
+    pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi})\n"""    
 
-        pinescript = "GetBotConfig(string pair) =>"
-        pinescript += '\n    config result = na\n'        
+    pinescript = "GetBotConfig(string pair) =>"
+    pinescript += '\n    config result = na\n'        
 
-        pair_list = []
-        for row in rows_list:
-            pair_list.append(f"'{row[0]}/USDT'")
+    pair_list_in_config = []
+    for row in rows_list:
+        pair_list_in_config.append(f"'{row[0]}/USDT'")
 
-        sql_in = '(' + ', '.join(pair for pair in pair_list) + ')' 
-        with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
-            cur = con.cursor()  
-            cur.execute("PRAGMA read_uncommitted = true;");     
-            
-            sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in}
-                    UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 30"""
+    sql_in = '(' + ', '.join(pair for pair in pair_list_in_config) + ')' 
+    with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");     
+        
+        sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE pair IN {sql_in}
+                UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting WHERE score >= 30"""
 
-            #print(sql)
-            res = cur.execute(sql)
-            rows = cur.fetchall()
-            rows_list = [list(row) for row in rows]
-            cur.close()
+        #print(sql)
+        res = cur.execute(sql)
+        rows = cur.fetchall()
+        rows_list = [list(row) for row in rows]
+        cur.close()
 
-        for row in rows_list:
-            pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4])
+    pair_list_in_pinescript = []
+    for row in rows_list:
+        pair_list_in_pinescript.append(f"'{row[0]}'")
+        pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4])
 
-        pinescript += '\n    result\n'
-        print(pinescript)
-        pinescript_path = os.path.join(bot_script_directory, 'pinescript.txt')
-        text_file = open(pinescript_path, "w")
-        text_file.write(pinescript)
-        text_file.close()                            
+    pinescript += '\n    result\n'
+    print(pinescript)
+    pinescript_path = os.path.join(bot_script_directory, 'pinescript.txt')
+    text_file = open(pinescript_path, "w")
+    text_file.write(pinescript)
+    text_file.close()  
+
+    pair_list_not_enough_volume = list(set(pair_list_in_config) - set(pair_list_in_pinescript))
+    if len(pair_list_not_enough_volume) > 0:    
+        mail = mt.Mail(
+            sender=mt.Address(email="mailtrap@demomailtrap.com", name="Bot"),
+            to=[mt.Address(email="mere.doku@gmail.com")],
+            subject='Volume insuffisant',
+            text=', '.join(pair_list_not_enough_volume),
+            category="Integration Test",
+        )
+        client = mt.MailtrapClient(token="d27ebfce94cfc54d8cf27a95cb073b36")
+        client.send(mail)                           
                           
 except:
     print(traceback.format_exc())
