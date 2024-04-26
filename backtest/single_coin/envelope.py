@@ -1,7 +1,6 @@
 import os
 import sys
 import mailtrap as mt
-node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
 script_directory = os.path.dirname(__file__)
 parent_directory = os.path.dirname(script_directory)
 parent_parent_directory = os.path.dirname(parent_directory)
@@ -24,6 +23,14 @@ from utilities.custom_indicators import get_n_columns
 import traceback
 
 try:
+
+    if os.name == 'nt':
+        node_path = "C:\\Program Files\\nodejs\\node.exe"
+        envelope_db_path = "D:\\Git\envelope\\database"
+    
+    else :
+        node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
+        envelope_db_path = "/home/doku/envelope/database"
 
     class SaEnvelope():
         def __init__(
@@ -338,18 +345,37 @@ try:
         path_download=database_directory
     )
     markets = bitget.exchange.load_markets()
+    #selected_markets = ['BTC/USDT','AABL/USDT','APU/USDT','EPIK/USDT','KHAI/USDT','APPA/USDT']
+    selected_markets = []
+    for market in sorted(markets):
+      if 'USDT' in market and markets[market]['spot'] == True :
+        selected_markets.append(market)
 
+    config_database_path = os.path.join(envelope_db_path, 'config.db3')
+    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+      cur = con.cursor()  
+      cur.execute("PRAGMA read_uncommitted = true;");     
+      
+      sql = "SELECT coin FROM config ORDER BY coin"
+      res = cur.execute(sql)
+      rows = cur.fetchall()
+      rows_list = [list(row) for row in rows]
+      cur.close()
+      pair_list_in_config = []
+      for row in rows_list:
+        pair_list_in_config.append(f"{row[0]}/USDT")
+
+    print('>>> download prices')
     files_path = os.path.join(database_directory, 'bitget', '30m', '*')
     files = glob.glob(files_path)
     for f in files:
         os.remove(f)
     download_data_path_script = os.path.join(database_directory, 'download_data.js')
-    for market in markets:
-        if 'USDT' in market and markets[market]['spot'] == True:        
-            print(market)
-            p = subprocess.Popen([node_path, download_data_path_script, f'{market}'], env=os.environ, stdout=subprocess.PIPE)
-            out = p.stdout.read()
-            print(out)    
+    for market in selected_markets:           
+      print(market)
+      p = subprocess.Popen([node_path, download_data_path_script, f'{market}'], env=os.environ, stdout=subprocess.PIPE)
+      out = p.stdout.read()
+      print(out)    
 
     print('>>> create week_backtesting.db3')
     week_db_name =  os.path.join(database_directory, 'week_backtesting.db3')
@@ -363,14 +389,13 @@ try:
     coef_on_btc_rsi = 1.6
     coef_on_stoch_rsi = 1.3
     fibo_level = 0
-    for market in markets:
-        if 'USDT' in market and markets[market]['spot'] == True:
+    for market in selected_markets:
             print(market)        
             try:
                 df = bitget.load_data(coin=market, interval=tf)
                 df['volume_usdt'] = df['volume'] * df['close']
                 last_volume_usdt = round(df['volume_usdt'].rolling(window=48).mean().iloc[-1], 2)
-                if (last_volume_usdt >= 1000):
+                if (last_volume_usdt >= 1000 or market in pair_list_in_config):
                     for i in range(0, len(list_source_name)) :
                         for j in range(0, len(list_env_perc)) :                        
                             strat = SaEnvelope( 
@@ -400,7 +425,7 @@ try:
 
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in markets:
+    for market in selected_markets:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
@@ -501,7 +526,7 @@ try:
             
             con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
             cur = con.cursor()  
-            for market in markets:
+            for market in selected_markets:
                 cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
                 cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
                 cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
@@ -556,7 +581,7 @@ try:
             
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in markets:
+    for market in selected_markets:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
@@ -612,7 +637,7 @@ try:
             
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in markets:
+    for market in selected_markets:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
@@ -623,6 +648,9 @@ try:
     cur.close()
     con.close()                         
   
+    database_directory = os.path.join(parent_parent_directory, 'database')
+    profit_week_db_name =  os.path.join(database_directory, 'profit_week_backtesting.db3')
+
     print('>>> update score in profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
@@ -631,30 +659,16 @@ try:
     cur.close()    
     con.close() 
 
-    backtest_path = '/home/doku/envelope/database/week_backtesting100.db3'
+    backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
     shutil.copyfile(profit_week_db_name, backtest_path)
 
     print('>>> update config according week_backtesting100')
-    config_database_path = '/home/doku/envelope/database/config.db3'
-    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
-        cur = con.cursor()  
-        cur.execute("PRAGMA read_uncommitted = true;");     
-        
-        sql = "SELECT coin FROM config ORDER BY coin"
-        res = cur.execute(sql)
-        rows = cur.fetchall()
-        rows_list = [list(row) for row in rows]
-        cur.close()
-
-    pair_list = []
-    for row in rows_list:    
-        pair_list.append(f"'{row[0]}/USDT'")
-    sql_in = '(' + ', '.join(pair for pair in pair_list) + ')'     
+    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'     
 
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
         cur = con.cursor()  
         cur.execute("PRAGMA read_uncommitted = true;");         
-        sql = f"SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting WHERE pair IN {sql_in} ORDER BY pair"
+        sql = f"SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting WHERE pair IN {sql_in_config} ORDER BY pair"
         res = cur.execute(sql)
         rows = cur.fetchall()
         rows_list = [list(row) for row in rows]
@@ -677,36 +691,18 @@ try:
         cur.close()    
 
     print('>>> generate pinescript')
-    bot_script_directory = '/home/doku/envelope'
-    database_path = os.path.join(bot_script_directory, 'database')
-    config_database_path = os.path.join(database_path, 'config.db3')
-    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
-        cur = con.cursor()  
-        cur.execute("PRAGMA read_uncommitted = true;");     
-        
-        sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM config ORDER BY coin"
-        res = cur.execute(sql)
-        rows = cur.fetchall()
-        rows_list = [list(row) for row in rows]
-        cur.close()
-
     pattern = "    if (pair == '{pair}')"
     pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level})\n"""  
 
     pinescript = "GetBotConfig(string pair) =>"
     pinescript += '\n    config result = na\n'        
 
-    pair_list_in_config = []
-    for row in rows_list:
-        pair_list_in_config.append(f"'{row[0]}/USDT'")
-
-    sql_in = '(' + ', '.join(pair for pair in pair_list_in_config) + ')' 
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
         cur = con.cursor()  
         cur.execute("PRAGMA read_uncommitted = true;");     
         
-        sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting WHERE pair IN {sql_in}
-            UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting WHERE score >= 30"""
+        sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE pair IN {sql_in_config}
+            UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE score >= 30"""
 
         #print(sql)
         res = cur.execute(sql)
@@ -715,18 +711,20 @@ try:
         cur.close()
 
     pair_list_in_pinescript = []
+    pair_list_not_enough_volume = []
     for row in rows_list:
         pair_list_in_pinescript.append(f"'{row[0]}'")
         pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
+        if row[6] < 1000 :
+          pair_list_not_enough_volume.append(row[0])
 
     pinescript += '\n    result\n'
     print(pinescript)
-    pinescript_path = os.path.join(bot_script_directory, 'pinescript.txt')
+    pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
     text_file = open(pinescript_path, "w")
     text_file.write(pinescript)
     text_file.close()  
 
-    pair_list_not_enough_volume = list(set(pair_list_in_config) - set(pair_list_in_pinescript))
     if len(pair_list_not_enough_volume) > 0:    
         mail = mt.Mail(
             sender=mt.Address(email="mailtrap@demomailtrap.com", name="Bot"),
