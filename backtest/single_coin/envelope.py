@@ -326,7 +326,6 @@ try:
 
             df_trades = pd.DataFrame(trades)
             if df_trades.empty:
-                print("!!! No trades")
                 return None
             else:
                 df_trades['open_date'] = pd.to_datetime(df_trades['open_date'])
@@ -345,11 +344,12 @@ try:
         path_download=database_directory
     )
     markets = bitget.exchange.load_markets()
-    #selected_markets = ['BTC/USDT','AABL/USDT','APU/USDT','EPIK/USDT','KHAI/USDT','APPA/USDT']
+    
     selected_markets = []
     for market in sorted(markets):
       if 'USDT' in market and markets[market]['spot'] == True :
         selected_markets.append(market)
+    #selected_markets = ['BTC/USDT','AABL/USDT','APU/USDT','EPIK/USDT','KHAI/USDT','APPA/USDT','10SET/USDT']
 
     config_database_path = os.path.join(envelope_db_path, 'config.db3')
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
@@ -372,7 +372,7 @@ try:
         os.remove(f)
     download_data_path_script = os.path.join(database_directory, 'download_data.js')
     for market in selected_markets:           
-      print(market)
+      print(f'prices:{market}')
       p = subprocess.Popen([node_path, download_data_path_script, f'{market}'], env=os.environ, stdout=subprocess.PIPE)
       out = p.stdout.read()
       print(out)    
@@ -390,7 +390,7 @@ try:
     coef_on_stoch_rsi = 1.3
     fibo_level = 0
     for market in selected_markets:
-            print(market)        
+            print(f'src:{market}')       
             try:
                 df = bitget.load_data(coin=market, interval=tf)
                 df['volume_usdt'] = df['volume'] * df['close']
@@ -448,7 +448,7 @@ try:
         source_name = row[1]
         env_perc = row[2]
         last_volume_usdt = row[3]
-        print(pair)
+        print(f'env:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test env_perc    
@@ -477,11 +477,12 @@ try:
             
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in markets:
-        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
-        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
-        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
-        cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{market}')")
+    for row in rows_list:
+            pair = row[0]
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
     con.commit()
     cur.close()
     con.close()    
@@ -503,7 +504,7 @@ try:
         last_volume_usdt = row[3]
         coef_on_btc_rsi = row[4] 
         coef_on_stoch_rsi = row[5]   
-        print(pair)
+        print(f'fibo:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
         
         for i in range(0, len(list_fibo_level)):
@@ -526,12 +527,13 @@ try:
             
             con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
             cur = con.cursor()  
-            for market in selected_markets:
-                cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
-                cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
-                cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
-                cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{market}')")
-                cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")            
+            for row in rows_list:
+                    pair = row[0]
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
             con.commit()
             cur.close()
             con.close()         
@@ -552,7 +554,7 @@ try:
         last_volume_usdt = row[3]
         coef_on_btc_rsi = row[4]
         fibo_level = row[5]
-        print(pair)
+        print(f'btc_rsi:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_btc_rsi    
@@ -581,12 +583,13 @@ try:
             
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in selected_markets:
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
+    for row in rows_list:
+            pair = row[0]
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
     con.commit()
     cur.close()
     con.close()          
@@ -608,7 +611,7 @@ try:
         coef_on_btc_rsi = row[4]
         coef_on_stoch_rsi = row[5]
         fibo_level = row[6]
-        print(pair)
+        print(f'stoch_rsi:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_stoch_rsi    
@@ -637,13 +640,14 @@ try:
             
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    for market in selected_markets:
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{market}')")            
+    for row in rows_list:
+            pair = row[0]
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")            
     con.commit()
     cur.close()
     con.close()                         
