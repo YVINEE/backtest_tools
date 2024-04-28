@@ -658,7 +658,7 @@ try:
     print('>>> update score in profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
-    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 20 AND worst_drawdown <= 10")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 18 AND worst_drawdown <= 10")
     con.commit()
     cur.close()    
     con.close() 
