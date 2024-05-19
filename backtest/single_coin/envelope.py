@@ -426,10 +426,11 @@ try:
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for market in selected_markets:
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{market}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{market}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND source_name != (SELECT MAX(source_name) FROM backtesting WHERE pair = '{market}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{market}')")            
     con.commit()
     cur.close()
     con.close()
@@ -437,7 +438,7 @@ try:
     print('>>> optimize env_perc for profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt FROM backtesting")
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
     rows_list = [list(row) for row in rows]
     cur.close()
@@ -479,10 +480,10 @@ try:
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
     con.commit()
     cur.close()
     con.close()    
@@ -491,7 +492,7 @@ try:
     list_fibo_level = [0.236, 0.382, 0.5, 0.618, 0.7, 1]
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting")
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
     rows_list = [list(row) for row in rows]
     cur.close()
@@ -529,11 +530,10 @@ try:
             cur = con.cursor()  
             for row in rows_list:
                     pair = row[0]
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
                     cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
                     cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
+                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
             con.commit()
             cur.close()
             con.close()         
@@ -541,7 +541,7 @@ try:
     print('>>> optimize coef_on_btc_rsi for profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, fibo_level FROM backtesting")
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, fibo_level FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
     rows_list = [list(row) for row in rows]
     cur.close()
@@ -585,11 +585,10 @@ try:
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")           
     con.commit()
     cur.close()
     con.close()          
@@ -597,7 +596,7 @@ try:
     print('>>> optimize coef_on_stoch_rsi for profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
-    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting")
+    cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
     rows_list = [list(row) for row in rows]
     cur.close()
@@ -642,12 +641,10 @@ try:
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND usd_per_day != (SELECT MAX(usd_per_day) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
-            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_btc_rsi != (SELECT MAX(coef_on_btc_rsi) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")            
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")                     
     con.commit()
     cur.close()
     con.close()                         
@@ -658,7 +655,7 @@ try:
     print('>>> update score in profit_week_backtesting.db3')
     con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
-    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 18 AND worst_drawdown <= 10")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 15 AND worst_drawdown <= 10")
     con.commit()
     cur.close()    
     con.close() 
@@ -689,7 +686,14 @@ try:
             fibo_level = row[5]
             sma_length = 5
             timeframe = '30min'
-            sql = f"REPLACE INTO config(coin, sma_source, sma_length, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, timeframe) VALUES('{coin}', '{sma_source}', {sma_length}, {envelope_percent}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level}, '{timeframe}')"    
+
+            sql_count = f"SELECT COUNT(*) FROM config WHERE coin = '{coin}'"
+            cur.execute(sql_count)            
+            number_of_coin = cur.fetchone()[0]
+            if number_of_coin > 0:
+                sql = f"UPDATE config SET sma_source = '{sma_source}', sma_length = {sma_length}, envelope_percent = {envelope_percent}, coef_on_btc_rsi = {coef_on_btc_rsi}, coef_on_stoch_rsi = {coef_on_stoch_rsi}, fibo_level = {fibo_level}, timeframe = '{timeframe}' WHERE coin = '{coin}'"    
+            else :
+                sql = f"INSERT INTO config(coin, sma_source, sma_length, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, timeframe) VALUES('{coin}', '{sma_source}', {sma_length}, {envelope_percent}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level}, '{timeframe}')"    
             res = cur.execute(sql)
         con.commit()    
         cur.close()    
@@ -706,7 +710,7 @@ try:
         cur.execute("PRAGMA read_uncommitted = true;");     
         
         sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE pair IN {sql_in_config}
-            UNION  SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE score >= 30"""
+            UNION SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting) t WHERE rn <= 30"""
 
         #print(sql)
         res = cur.execute(sql)
