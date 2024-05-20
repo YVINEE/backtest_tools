@@ -32,6 +32,7 @@ try:
         node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
         envelope_db_path = "/home/doku/envelope/database"
 
+# %%
     class SaEnvelope():
         def __init__(
             self,
@@ -107,22 +108,25 @@ try:
             
             # btc rsi                    
             df_btc['rsi'] = self.fast_rsi(df_btc['close'], 14).shift(1)
+            
             # btc coef_low_env
             df_btc['coef_low_env'] = 1.0
-            df_btc.loc[(df_btc['rsi'] <= 30), 'coef_low_env'] = self.coef_on_btc_rsi  
+            df_btc.loc[(df_btc['rsi'] <= 30), 'coef_low_env'] = self.coef_on_btc_rsi
+            
             #btc coef_high_env
             df_btc['coef_high_env'] = 1.0
             df_btc.loc[(df_btc['rsi'] >= 70), 'coef_high_env'] = self.coef_on_btc_rsi
+            
             df_btc_coef_env = df_btc[['coef_low_env', 'coef_high_env']].copy()
             df = df.merge(df_btc_coef_env,how='left', left_on='date', right_on='date')
 
             df['k'] = ta.momentum.StochRSIIndicator(df['close']).stochrsi_k().shift(1)
             df.loc[(df['k'] >= 0.75) & (df['coef_low_env'] < self.coef_on_stoch_rsi), 'coef_low_env'] = self.coef_on_stoch_rsi
             df.loc[(df['k'] <= 0.25) & (df['coef_high_env'] < self.coef_on_stoch_rsi), 'coef_high_env'] = self.coef_on_stoch_rsi            
-
             src = self.get_source(df, self.source_name) 
             df['ma_base'] = ta.trend.sma_indicator(close=src, window=self.ma_base_window).shift(1)
             high_envelopes = [round(1/(1-e)-1, 3) for e in self.envelopes]
+            
             for i in range(1, len(self.envelopes) + 1):
                 df[f'ma_high_{i}'] = df['ma_base'] * (1 + df['coef_high_env']*high_envelopes[i-1])
                 df[f'ma_low_{i}'] = df['ma_base'] * (1 - df['coef_low_env']*self.envelopes[i-1])
@@ -130,7 +134,12 @@ try:
             for i in range(1, len(self.envelopes) + 1):
                 df.loc[df[f'ma_high_{i}'] < df['fibo_high'], f'ma_high_{i}'] = df['fibo_high']
                 df.loc[df[f'ma_low_{i}'] > df['fibo_low'], f'ma_low_{i}'] = df['fibo_low']                     
-                
+        
+            # saving the excel
+            # file_name = os.path.join(script_directory, 'df.xlsx')
+            # df.to_excel(file_name)
+            # print('DataFrame is written to Excel File successfully.')                
+        
             self.df = df    
             return self.df
         
@@ -337,6 +346,7 @@ try:
                 "days": df_days
             }      
             
+    # %%
     exchange_name = "bitget"
     database_directory = os.path.join(parent_parent_directory, 'database')
     bitget = ExchangeDataManager(
@@ -344,13 +354,13 @@ try:
         path_download=database_directory
     )
     markets = bitget.exchange.load_markets()
-    
     selected_markets = []
     for market in sorted(markets):
       if 'USDT' in market and markets[market]['spot'] == True :
         selected_markets.append(market)
-    #selected_markets = ['BTC/USDT','AABL/USDT','APU/USDT','EPIK/USDT','KHAI/USDT','APPA/USDT','10SET/USDT']
+    #selected_markets = ['BTC/USDT','ZKPEPE/USDT','ZRX/USDT']
 
+# %%
     config_database_path = os.path.join(envelope_db_path, 'config.db3')
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
       cur = con.cursor()  
@@ -365,6 +375,7 @@ try:
       for row in rows_list:
         pair_list_in_config.append(f"{row[0]}/USDT")
 
+# %%
     print('>>> download prices')
     files_path = os.path.join(database_directory, 'bitget', '30m', '*')
     files = glob.glob(files_path)
@@ -377,9 +388,10 @@ try:
       out = p.stdout.read()
       print(out)    
 
-    print('>>> create week_backtesting.db3')
-    week_db_name =  os.path.join(database_directory, 'week_backtesting.db3')
-    os.remove(week_db_name) if os.path.exists(week_db_name) else None
+# %%
+    print('>>> create week_backtesting_src.db3')
+    week_db_name_src =  os.path.join(database_directory, 'week_backtesting_src.db3')
+    os.remove(week_db_name_src) if os.path.exists(week_db_name_src) else None
     tf = "30m"
 
     list_source_name = ['close', 'hl2', 'hlc3', 'ohlc4', 'hlcc4']
@@ -414,16 +426,13 @@ try:
                             bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                             
                             if bt_result is not None:
-                                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[j], source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)                        
+                                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_src,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[j], source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)                        
             except FileNotFoundError:
                 print(f'FileNotFoundError for {market}')
 
-    print('>>> create profit_week_backtesting.db3')
-    profit_week_db_name =  os.path.join(database_directory, 'profit_week_backtesting.db3')
-    os.remove(profit_week_db_name) if os.path.exists(profit_week_db_name) else None
-    shutil.copyfile(week_db_name, profit_week_db_name)
 
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+# %%
+    con = sqlite3.connect(week_db_name_src, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for market in selected_markets:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{market}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{market}')")
@@ -435,8 +444,12 @@ try:
     cur.close()
     con.close()
 
-    print('>>> optimize env_perc for profit_week_backtesting.db3')
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+# %%
+    print('>>> create week_backtesting_env.db3')
+    week_db_name_env =  os.path.join(database_directory, 'week_backtesting_env.db3')
+    os.remove(week_db_name_env) if os.path.exists(week_db_name_env) else None
+    shutil.copyfile(week_db_name_src, week_db_name_env)
+    con = sqlite3.connect(week_db_name_src, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
@@ -474,9 +487,9 @@ try:
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi,fibo_level=fibo_level)                    
+                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_env,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi,fibo_level=fibo_level)                    
             
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    con = sqlite3.connect(week_db_name_env, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
@@ -488,9 +501,13 @@ try:
     cur.close()
     con.close()    
 
-    print('>>> optimize fibo_level for profit_week_backtesting.db3')
+# %%
+    print('>>> create week_backtesting_fibo.db3')
+    week_db_name_fibo =  os.path.join(database_directory, 'week_backtesting_fibo.db3')
+    os.remove(week_db_name_fibo) if os.path.exists(week_db_name_fibo) else None
+    shutil.copyfile(week_db_name_env, week_db_name_fibo)
     list_fibo_level = [0.236, 0.382, 0.5, 0.618, 0.7, 1]
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    con = sqlite3.connect(week_db_name_fibo, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
@@ -524,22 +541,26 @@ try:
             strat.populate_buy_sell()
             bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
             if bt_result is not None:
-                df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=list_fibo_level[i])          
+                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_fibo,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=list_fibo_level[i])          
             
-            con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-            cur = con.cursor()  
-            for row in rows_list:
-                    pair = row[0]
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
-                    cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
-            con.commit()
-            cur.close()
-            con.close()         
+    con = sqlite3.connect(week_db_name_fibo, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for row in rows_list:
+            pair = row[0]
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND fibo_level != (SELECT MAX(fibo_level) FROM backtesting WHERE pair = '{pair}')")
+            cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
+    con.commit()
+    cur.close()
+    con.close()         
 
-    print('>>> optimize coef_on_btc_rsi for profit_week_backtesting.db3')
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+# %%
+    print('>>> create week_backtesting_btc_rsi.db3')
+    week_db_name_btc_rsi =  os.path.join(database_directory, 'week_backtesting_btc_rsi.db3')
+    os.remove(week_db_name_btc_rsi) if os.path.exists(week_db_name_btc_rsi) else None
+    shutil.copyfile(week_db_name_fibo, week_db_name_btc_rsi)
+    con = sqlite3.connect(week_db_name_btc_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, fibo_level FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
@@ -579,9 +600,9 @@ try:
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi_to_test, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)          
+                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_btc_rsi,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi_to_test, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)          
             
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    con = sqlite3.connect(week_db_name_btc_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
@@ -593,8 +614,13 @@ try:
     cur.close()
     con.close()          
 
-    print('>>> optimize coef_on_stoch_rsi for profit_week_backtesting.db3')
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+# %%
+    print('>>> create week_backtesting_stoch_rsi.db3')
+    week_db_name_stoch_rsi =  os.path.join(database_directory, 'week_backtesting_stoch_rsi.db3')
+    os.remove(week_db_name_stoch_rsi) if os.path.exists(week_db_name_stoch_rsi) else None
+    shutil.copyfile(week_db_name_btc_rsi, week_db_name_stoch_rsi)
+
+    con = sqlite3.connect(week_db_name_stoch_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting ORDER BY pair")
     rows = cur.fetchall()
@@ -635,9 +661,9 @@ try:
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
-                    df_trades, df_days = basic_single_asset_backtest(db_name=profit_week_db_name,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi_to_test, fibo_level=fibo_level)          
+                    df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_stoch_rsi,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi_to_test, fibo_level=fibo_level)          
             
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    con = sqlite3.connect(week_db_name_stoch_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for row in rows_list:
             pair = row[0]
@@ -649,11 +675,13 @@ try:
     cur.close()
     con.close()                         
   
-    database_directory = os.path.join(parent_parent_directory, 'database')
-    profit_week_db_name =  os.path.join(database_directory, 'profit_week_backtesting.db3')
-
-    print('>>> update score in profit_week_backtesting.db3')
-    con = sqlite3.connect(profit_week_db_name, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+# %%
+    print('>>> create week_backtesting_score.db3')
+    week_db_name_score=  os.path.join(database_directory, 'week_backtesting_score.db3')
+    os.remove(week_db_name_score) if os.path.exists(week_db_name_score) else None
+    shutil.copyfile(week_db_name_stoch_rsi, week_db_name_score)
+    
+    con = sqlite3.connect(week_db_name_score, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
     cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 15 AND worst_drawdown <= 10")
     con.commit()
@@ -661,8 +689,9 @@ try:
     con.close() 
 
     backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
-    shutil.copyfile(profit_week_db_name, backtest_path)
+    shutil.copyfile(week_db_name_score, backtest_path)
 
+# %%
     print('>>> update config according week_backtesting100')
     sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'     
 
@@ -698,6 +727,7 @@ try:
         con.commit()    
         cur.close()    
 
+# %%
     print('>>> generate pinescript')
     pattern = "    if (pair == '{pair}')"
     pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level})\n"""  
@@ -733,6 +763,7 @@ try:
     text_file.write(pinescript)
     text_file.close()  
 
+# %%
     if len(pair_list_not_enough_volume) > 0:    
         mail = mt.Mail(
             sender=mt.Address(email="mailtrap@demomailtrap.com", name="Bot"),
