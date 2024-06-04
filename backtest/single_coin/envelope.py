@@ -1,10 +1,6 @@
 import os
 import sys
 import mailtrap as mt
-script_directory = os.path.dirname(__file__)
-parent_directory = os.path.dirname(script_directory)
-parent_parent_directory = os.path.dirname(parent_directory)
-sys.path.append(parent_parent_directory)
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
@@ -16,14 +12,34 @@ import sqlite3
 import glob
 import shutil
 from IPython.display import clear_output
+script_directory = os.path.dirname(__file__)
+parent_directory = os.path.dirname(script_directory)
+parent_parent_directory = os.path.dirname(parent_directory)
+sys.path.append(parent_parent_directory)
 from utilities.data_manager import ExchangeDataManager
 from utilities.custom_indicators import get_n_columns, SuperTrend
 from utilities.backtestingv2 import basic_single_asset_backtest, plot_wallet_vs_asset, get_metrics, get_n_columns, plot_sharpe_evolution, plot_bar_by_month
 from utilities.custom_indicators import get_n_columns
 import traceback
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
+from time import gmtime, strftime
+import datetime
+import time
+import pyperclip
+import re
+import psutil
+import signal
 
 try:
 
+# %%
     if os.name == 'nt':
         node_path = "C:\\Program Files\\nodejs\\node.exe"
         envelope_db_path = "D:\\Git\envelope\\database"
@@ -31,6 +47,20 @@ try:
     else :
         node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
         envelope_db_path = "/home/doku/envelope/database"
+        
+    exchange_name = "bitget"
+    database_directory = os.path.join(parent_parent_directory, 'database')
+    config_database_path = os.path.join(envelope_db_path, 'config.db3')
+    files_path = os.path.join(database_directory, 'bitget', '30m', '*')
+    tf = "30m"
+    week_db_name_src =  os.path.join(database_directory, 'week_backtesting_src.db3')
+    week_db_name_env =  os.path.join(database_directory, 'week_backtesting_env.db3')
+    week_db_name_fibo =  os.path.join(database_directory, 'week_backtesting_fibo.db3')
+    week_db_name_btc_rsi =  os.path.join(database_directory, 'week_backtesting_btc_rsi.db3')
+    week_db_name_stoch_rsi =  os.path.join(database_directory, 'week_backtesting_stoch_rsi.db3')
+    week_db_name_score = os.path.join(database_directory, 'week_backtesting_score.db3')
+    backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
+    pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
 
 # %%
     class SaEnvelope():
@@ -97,8 +127,8 @@ try:
             )
 
             #fibonacci
-            df['highest'] = df['high'].rolling(window=48).max().shift(1)
-            df['lowest'] = df['low'].rolling(window=48).min().shift(1)
+            df['highest'] = df['high'].rolling(window=24).max().shift(1)
+            df['lowest'] = df['low'].rolling(window=24).min().shift(1)
             df['dist'] = df['highest'] - df['lowest']
             df['fibo_low'] = df['highest'] - df['dist'] * self.fibo_level  
             df['fibo_high'] = df['lowest'] + df['dist'] * self.fibo_level
@@ -347,8 +377,6 @@ try:
             }      
             
     # %%
-    exchange_name = "bitget"
-    database_directory = os.path.join(parent_parent_directory, 'database')
     bitget = ExchangeDataManager(
         exchange_name=exchange_name, 
         path_download=database_directory
@@ -361,7 +389,6 @@ try:
     #selected_markets = ['BTC/USDT','ZKPEPE/USDT','ZRX/USDT']
 
 # %%
-    config_database_path = os.path.join(envelope_db_path, 'config.db3')
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
       cur = con.cursor()  
       cur.execute("PRAGMA read_uncommitted = true;");     
@@ -374,10 +401,10 @@ try:
       pair_list_in_config = []
       for row in rows_list:
         pair_list_in_config.append(f"{row[0]}/USDT")
+    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'
 
-# %%
+#%%
     print('>>> download prices')
-    files_path = os.path.join(database_directory, 'bitget', '30m', '*')
     files = glob.glob(files_path)
     for f in files:
         os.remove(f)
@@ -390,9 +417,7 @@ try:
 
 # %%
     print('>>> create week_backtesting_src.db3')
-    week_db_name_src =  os.path.join(database_directory, 'week_backtesting_src.db3')
     os.remove(week_db_name_src) if os.path.exists(week_db_name_src) else None
-    tf = "30m"
 
     list_source_name = ['close', 'hl2', 'hlc3', 'ohlc4', 'hlcc4']
     list_env_perc = [0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]
@@ -446,7 +471,6 @@ try:
 
 # %%
     print('>>> create week_backtesting_env.db3')
-    week_db_name_env =  os.path.join(database_directory, 'week_backtesting_env.db3')
     os.remove(week_db_name_env) if os.path.exists(week_db_name_env) else None
     shutil.copyfile(week_db_name_src, week_db_name_env)
     con = sqlite3.connect(week_db_name_src, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
@@ -497,15 +521,17 @@ try:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND env_perc != (SELECT MAX(env_perc) FROM backtesting WHERE pair = '{pair}')")
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
+            
     con.commit()
     cur.close()
     con.close()    
 
 # %%
     print('>>> create week_backtesting_fibo.db3')
-    week_db_name_fibo =  os.path.join(database_directory, 'week_backtesting_fibo.db3')
+    
     os.remove(week_db_name_fibo) if os.path.exists(week_db_name_fibo) else None
     shutil.copyfile(week_db_name_env, week_db_name_fibo)
+    
     list_fibo_level = [0.236, 0.382, 0.5, 0.618, 0.7, 1]
     con = sqlite3.connect(week_db_name_fibo, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
@@ -557,9 +583,10 @@ try:
 
 # %%
     print('>>> create week_backtesting_btc_rsi.db3')
-    week_db_name_btc_rsi =  os.path.join(database_directory, 'week_backtesting_btc_rsi.db3')
+    
     os.remove(week_db_name_btc_rsi) if os.path.exists(week_db_name_btc_rsi) else None
     shutil.copyfile(week_db_name_fibo, week_db_name_btc_rsi)
+    
     con = sqlite3.connect(week_db_name_btc_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, fibo_level FROM backtesting ORDER BY pair")
@@ -616,9 +643,10 @@ try:
 
 # %%
     print('>>> create week_backtesting_stoch_rsi.db3')
-    week_db_name_stoch_rsi =  os.path.join(database_directory, 'week_backtesting_stoch_rsi.db3')
+
     os.remove(week_db_name_stoch_rsi) if os.path.exists(week_db_name_stoch_rsi) else None
     shutil.copyfile(week_db_name_btc_rsi, week_db_name_stoch_rsi)
+
 
     con = sqlite3.connect(week_db_name_stoch_rsi, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
@@ -677,23 +705,21 @@ try:
   
 # %%
     print('>>> create week_backtesting_score.db3')
-    week_db_name_score=  os.path.join(database_directory, 'week_backtesting_score.db3')
+
     os.remove(week_db_name_score) if os.path.exists(week_db_name_score) else None
     shutil.copyfile(week_db_name_stoch_rsi, week_db_name_score)
     
     con = sqlite3.connect(week_db_name_score, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()
-    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 15 AND worst_drawdown <= 10")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 10 AND worst_drawdown <= 15")
     con.commit()
     cur.close()    
     con.close() 
 
-    backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
     shutil.copyfile(week_db_name_score, backtest_path)
 
 # %%
-    print('>>> update config according week_backtesting100')
-    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'     
+    print('>>> update config according week_backtesting100')     
 
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
         cur = con.cursor()  
@@ -724,6 +750,7 @@ try:
             else :
                 sql = f"INSERT INTO config(coin, sma_source, sma_length, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, timeframe) VALUES('{coin}', '{sma_source}', {sma_length}, {envelope_percent}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level}, '{timeframe}')"    
             res = cur.execute(sql)
+            
         con.commit()    
         cur.close()    
 
@@ -740,7 +767,7 @@ try:
         cur.execute("PRAGMA read_uncommitted = true;");     
         
         sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE pair IN {sql_in_config}
-            UNION SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting) t WHERE rn <= 30"""
+            UNION SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting WHERE pair NOT IN {sql_in_config} AND score IS NOT NULL) t WHERE rn <= 15"""
 
         #print(sql)
         res = cur.execute(sql)
@@ -758,10 +785,11 @@ try:
 
     pinescript += '\n    result\n'
     print(pinescript)
-    pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
+
     text_file = open(pinescript_path, "w")
     text_file.write(pinescript)
     text_file.close()  
+    
 
 # %%
     if len(pair_list_not_enough_volume) > 0:    
@@ -775,5 +803,177 @@ try:
         client = mt.MailtrapClient(token="d27ebfce94cfc54d8cf27a95cb073b36")
         client.send(mail)                           
                           
+# %%
+    print('>>> update tradingview')
+    pair_list_in_config = [pair.replace('/','') for pair in pair_list_in_config] 
+    GetBotConfig = pinescript
+    pattern = r"'(\w+USDT)'"
+    matches = re.findall(pattern, GetBotConfig)
+    pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if proc.info['cmdline'] != None:
+                cmdline = ' '.join(map(str, proc.info['cmdline']))  # Convert each argument to string using map()
+                print(cmdline)
+                if 'chrome' in cmdline :
+                    proc.send_signal(signal.SIGTERM) # Terminate the process
+                    print(f"Terminated process: {proc.pid}")
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass    
+
+# %%
+    options = webdriver.ChromeOptions()
+    options.add_argument("--password-store=basic")
+    options.add_argument("--start-maximized")
+    options.add_experimental_option(
+        "prefs",    
+        {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+        },
+    )    
+
+    browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()),options=options)
+    url = 'https://www.tradingview.com/accounts/signin/'
+    browser.get(url)
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.NAME, 'Email'))).click()
+    
+    WebDriverWait(browser, 10).until(EC.visibility_of_element_located((By.ID, 'id_username'))).send_keys('yvinee@protonmail.com')
+
+    WebDriverWait(browser, 10).until(EC.visibility_of_element_located((By.ID, 'id_password'))).send_keys('Uar@ulnty86330')
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-overflow-tooltip-text='Sign in']"))).click()
+
+    
+    time.sleep(30)
+    url='https://www.tradingview.com/chart'
+    browser.get(url)
+    
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-overflow-tooltip-text='Accept all ']"))).click() 
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[aria-label='Remove objects']"))).click()
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='remove-studies']"))).click()
+
+    xpath = "//button[@aria-label = 'Open Pine Editor'][@data-active='false']"
+    open_pine_editor_elements = browser.find_elements(By.XPATH, xpath);
+    if len(open_pine_editor_elements) > 0:
+        #open_pine_editor_elements[0].click()
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.XPATH, xpath))).click()
+        print("Open Pine Editor is found")
+    else:
+        print("Open Pine Editor is NOT found")
+
+    
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))).click()
+    time.sleep(2)
+    ActionChains(browser).key_down(Keys.CONTROL).send_keys('o').key_up(Keys.CONTROL).perform()
+    time.sleep(2)
+    ActionChains(browser).send_keys(Keys.DOWN).perform()
+    time.sleep(2)
+    ActionChains(browser).send_keys(Keys.RETURN).perform()
+    time.sleep(4)
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))).click()
+
+    editor = browser.switch_to.active_element
+
+    time.sleep(2)
+    editor.send_keys(Keys.CONTROL + 'a')
+    time.sleep(2)
+    editor.send_keys(Keys.CONTROL + 'c')    
+    script = pyperclip.paste()
+
+    update_date = "//" + datetime.datetime.now().strftime('%A %d %B %X')
+    new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
+
+    pyperclip.copy(new_script)
+    editor.send_keys(Keys.DELETE)
+
+    time.sleep(2)
+    editor.send_keys(Keys.CONTROL + 'v')
+
+    time.sleep(2)
+    editor.send_keys(Keys.CONTROL + 's')
+    time.sleep(2)
+
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-script-to-chart']"))).click()
+    time.sleep(10)  
+
+    
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+
+    time.sleep(4)
+    clear_list_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Clear list')]")
+    if len(clear_list_elements) > 0:
+        clear_list_elements[0].click()
+        print("Clear List is found")
+        time.sleep(2)
+        ActionChains(browser).send_keys(Keys.RETURN).perform()
+
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-symbol-button']"))).click()
+        time.sleep(2)
+        ActionChains(browser).send_keys("BITGET:BTCUSDT").perform()
+        time.sleep(2)
+        ActionChains(browser).send_keys(Keys.RETURN).perform()        
+        time.sleep(2)
+        ActionChains(browser).send_keys(Keys.ESCAPE).perform()
+        time.sleep(2)
+
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+        add_section_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Add section')]")
+        time.sleep(2)
+        if len(add_section_elements) > 0:
+            add_section_elements[0].click()
+        
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-symbol-button']"))).click()
+        time.sleep(2)        
+
+        for pair in pair_list_in_config:
+            print(pair)
+            ActionChains(browser).send_keys(f"BITGET:{pair}").perform()
+            time.sleep(1)
+            ActionChains(browser).send_keys(Keys.RETURN).perform()        
+            time.sleep(1)  
+
+        pair = pair_list_to_study[0]
+        ActionChains(browser).send_keys(f"BITGET:{pair}").perform()
+        time.sleep(1)
+        ActionChains(browser).send_keys(Keys.RETURN).perform()        
+        time.sleep(1)          
+
+        time.sleep(2)
+        ActionChains(browser).send_keys(Keys.ESCAPE).perform()
+        time.sleep(10)
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"[data-symbol-full='BITGET:{pair}']"))).click()
+            
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+        time.sleep(2)
+        add_section_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Add section')]")
+        if len(add_section_elements) > 0:
+            add_section_elements[0].click()
+
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-symbol-button']"))).click()
+        time.sleep(2)               
+        
+        for pair in pair_list_to_study[1:]:
+            print(pair)
+            ActionChains(browser).send_keys(f"BITGET:{pair}").perform()
+            time.sleep(1)
+            ActionChains(browser).send_keys(Keys.RETURN).perform()        
+            time.sleep(1)        
+
+        ActionChains(browser).send_keys(Keys.ESCAPE).perform()       
+
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='backtesting']"))).click() 
+
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.ID, "header-toolbar-save-load"))).click()
+
+    else:
+        print("Clear List is NOT found")
+
+    browser.close()
+
 except:
     print(traceback.format_exc())
