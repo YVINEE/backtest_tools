@@ -30,10 +30,10 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from time import gmtime, strftime
-import datetime
+from datetime import datetime, timedelta
+import re
 import time
 import pyperclip
-import re
 import psutil
 import signal
 
@@ -814,7 +814,7 @@ try:
         try:
             if proc.info['cmdline'] != None:
                 cmdline = ' '.join(map(str, proc.info['cmdline']))  # Convert each argument to string using map()
-                print(cmdline)
+                #print(cmdline)
                 if 'chrome' in cmdline :
                     proc.send_signal(signal.SIGTERM) # Terminate the process
                     print(f"Terminated process: {proc.pid}")
@@ -885,8 +885,28 @@ try:
     editor.send_keys(Keys.CONTROL + 'c')    
     script = pyperclip.paste()
 
-    update_date = "//" + datetime.datetime.now().strftime('%A %d %B %X')
+    today = datetime.now()
+    one_week_ago = today - timedelta(weeks=1)
+    date_one_week_ago = one_week_ago.strftime("%Y-%m-%d")    
+
+    update_date = "//" + today.strftime('%A %d %B %X')
     new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
+
+    start_date_pattern = r'^startDate = input\.time\(timestamp\("(\d{4}-\d{2}-\d{2})"\),'
+
+    # Split the original string into lines
+    lines = new_script.split('\n')
+
+    # Replace the line matching the pattern
+    for i, line in enumerate(lines):
+        match = re.match(start_date_pattern, line)
+        if match:
+            old_date = match.group(1)
+            new_line = re.sub(old_date, date_one_week_ago, line)
+            lines[i] = new_line
+
+    # Join the lines back into a string
+    new_script = '\n'.join(lines)       
 
     pyperclip.copy(new_script)
     editor.send_keys(Keys.DELETE)
@@ -900,7 +920,6 @@ try:
 
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-script-to-chart']"))).click()
     time.sleep(10)  
-
     
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
 
@@ -958,7 +977,7 @@ try:
         time.sleep(2)               
         
         for pair in pair_list_to_study[1:]:
-            print(pair)
+            #print(pair)
             ActionChains(browser).send_keys(f"BITGET:{pair}").perform()
             time.sleep(1)
             ActionChains(browser).send_keys(Keys.RETURN).perform()        
@@ -966,13 +985,15 @@ try:
 
         ActionChains(browser).send_keys(Keys.ESCAPE).perform()       
 
-        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='backtesting']"))).click() 
-
-        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.ID, "header-toolbar-save-load"))).click()
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='backtesting']"))).click()         
 
     else:
         print("Clear List is NOT found")
-
+    
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[aria-label='Remove objects']"))).click()
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='remove-studies']"))).click()  
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.ID, "header-toolbar-save-load"))).click()  
+    time.sleep(30)
     browser.close()
 
 except:
