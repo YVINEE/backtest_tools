@@ -31,6 +31,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from time import gmtime, strftime
 from datetime import datetime, timedelta
+import pytz
 import re
 import time
 import pyperclip
@@ -51,6 +52,7 @@ try:
     exchange_name = "bitget"
     database_directory = os.path.join(parent_parent_directory, 'database')
     config_database_path = os.path.join(envelope_db_path, 'config.db3')
+    indicators_database_path = os.path.join(envelope_db_path, 'indicators.db3')
     files_path = os.path.join(database_directory, 'bitget', '30m', '*')
     tf = "30m"
     week_db_name_src =  os.path.join(database_directory, 'week_backtesting_src.db3')
@@ -118,7 +120,7 @@ try:
             )
             return rsi                
             
-        def populate_indicators(self):
+        def populate_indicators(self, pair=None):
             # -- Clear dataset --
             df = self.df
             df.drop(
@@ -147,7 +149,7 @@ try:
             df_btc['coef_high_env'] = 1.0
             df_btc.loc[(df_btc['rsi'] >= 70), 'coef_high_env'] = self.coef_on_btc_rsi
             
-            df_btc_coef_env = df_btc[['coef_low_env', 'coef_high_env']].copy()
+            df_btc_coef_env = df_btc[['rsi','coef_low_env', 'coef_high_env']].copy()
             df = df.merge(df_btc_coef_env,how='left', left_on='date', right_on='date')
 
             df['k'] = ta.momentum.StochRSIIndicator(df['close']).stochrsi_k().shift(1)
@@ -168,7 +170,7 @@ try:
             # saving the excel
             # file_name = os.path.join(script_directory, 'df.xlsx')
             # df.to_excel(file_name)
-            # print('DataFrame is written to Excel File successfully.')                
+            # print('DataFrame is written to Excel File successfully.')        
         
             self.df = df    
             return self.df
@@ -386,7 +388,7 @@ try:
     for market in sorted(markets):
       if 'USDT' in market and markets[market]['spot'] == True :
         selected_markets.append(market)
-    #selected_markets = ['BTC/USDT','ZKPEPE/USDT','ZRX/USDT']
+    #selected_markets = ['BTC/USDT','CATWIF/USDT']
 
 # %%
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
@@ -420,7 +422,7 @@ try:
     os.remove(week_db_name_src) if os.path.exists(week_db_name_src) else None
 
     list_source_name = ['close', 'hl2', 'hlc3', 'ohlc4', 'hlcc4']
-    list_env_perc = [0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]
+    list_env_perc = [0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]
 
     df_btc = bitget.load_data(coin="BTC/USDT", interval=tf)
     coef_on_btc_rsi = 1.6
@@ -685,7 +687,7 @@ try:
                     coef_on_stoch_rsi=coef_on_stoch_rsi_to_test,           
                     fibo_level=fibo_level    
                 )
-                strat.populate_indicators()
+                strat.populate_indicators(pair)
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
@@ -755,6 +757,49 @@ try:
         cur.close()    
 
 # %%
+    print('>>> keep indicators history according week_backtesting100')     
+
+    with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");         
+        sql = f"SELECT pair, score, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, startDate , final_wallet, usd_per_day, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees FROM backtesting ORDER BY pair"
+        res = cur.execute(sql)
+        rows = cur.fetchall()
+        rows_list = [list(row) for row in rows]
+        cur.close()
+
+    utc_timezone = pytz.utc
+    with sqlite3.connect(indicators_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+        cur = con.cursor()
+        cur.execute('CREATE TABLE IF NOT EXISTS indicators (pair TEXT NOT NULL, applicationDate timestamp NOT NULL, score NUMERIC, source_name TEXT, env_perc NUMERIC, coef_on_btc_rsi NUMERIC, coef_on_stoch_rsi NUMERIC, fibo_level NUMERIC, startDate timestamp, final_wallet NUMERIC, usd_per_day NUMERIC, last_volume_usdt NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC)')
+        for row in rows_list:
+            pair = row[0]
+            applicationDate = datetime.now(utc_timezone)
+            score = 'null' if (row[1] == None) else row[1]
+            source_name = row[2]
+            env_perc = row[3]
+            coef_on_btc_rsi = row[4]
+            coef_on_stoch_rsi = row[5]
+            fibo_level = row[6]
+            startDate = row[7]
+            final_wallet = row[8]
+            usd_per_day = row[9]
+            last_volume_usdt = row[10]
+            total_trades = row[11]
+            win_rate = row[12]
+            avg_profit = row[13]
+            sharpe_ratio = row[14]
+            worst_drawdown = row[15]
+            best_trade = row[16]
+            worst_trade = row[17]
+            total_fees = row[18]
+
+            sql = f"INSERT INTO indicators(pair, applicationDate, score, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, startDate , final_wallet, usd_per_day, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees) VALUES('{pair}', '{applicationDate}', {score}, '{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level}, '{startDate}',{final_wallet}, {usd_per_day}, {last_volume_usdt}, {total_trades}, {win_rate}, {avg_profit}, {sharpe_ratio}, {worst_drawdown}, {best_trade}, {worst_trade}, {total_fees})"                
+            res = cur.execute(sql)
+            
+        con.commit()    
+        cur.close() 
+#%%
     print('>>> generate pinescript')
     pattern = "    if (pair == '{pair}')"
     pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level})\n"""  
@@ -781,7 +826,7 @@ try:
         pair_list_in_pinescript.append(f"'{row[0]}'")
         pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
         if row[6] < 1000 :
-          pair_list_not_enough_volume.append(row[0])
+          pair_list_not_enough_volume.append(row[0] + f'({row[6]})')
 
     pinescript += '\n    result\n'
     print(pinescript)
@@ -868,6 +913,8 @@ try:
     
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))).click()
     time.sleep(2)
+    editor = browser.switch_to.active_element    
+    time.sleep(2)
     ActionChains(browser).key_down(Keys.CONTROL).send_keys('o').key_up(Keys.CONTROL).perform()
     time.sleep(2)
     ActionChains(browser).send_keys(Keys.DOWN).perform()
@@ -889,7 +936,7 @@ try:
     one_week_ago = today - timedelta(weeks=1)
     date_one_week_ago = one_week_ago.strftime("%Y-%m-%d")    
 
-    update_date = "//" + today.strftime('%A %d %B %X')
+    update_date = "update_date = '" + today.strftime('%A %d %b %X') + "'"
     new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
 
     start_date_pattern = r'^startDate = input\.time\(timestamp\("(\d{4}-\d{2}-\d{2})"\),'
