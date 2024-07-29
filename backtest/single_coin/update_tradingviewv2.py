@@ -111,6 +111,8 @@ try:
     
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))).click()
     time.sleep(2)
+    editor = browser.switch_to.active_element
+    time.sleep(2)
     ActionChains(browser).key_down(Keys.CONTROL).send_keys('o').key_up(Keys.CONTROL).perform()
     time.sleep(2)
     ActionChains(browser).send_keys(Keys.DOWN).perform()
@@ -132,7 +134,7 @@ try:
     one_week_ago = today - timedelta(weeks=1)
     date_one_week_ago = one_week_ago.strftime("%Y-%m-%d")
 
-    update_date = "//" + today.strftime('%A %d %B %X')
+    update_date = "update_date = '" + today.strftime('%A %d %b %X') + "'"
     new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
 
     # Pattern to match the line starting with "startDate = input.time(timestamp("
