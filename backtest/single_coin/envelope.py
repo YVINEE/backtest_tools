@@ -412,7 +412,7 @@ try:
         os.remove(f)
     download_data_path_script = os.path.join(database_directory, 'download_data.js')
     for market in selected_markets:           
-      print(f'prices:{market}')
+      #print(f'prices:{market}')
       p = subprocess.Popen([node_path, download_data_path_script, f'{market}'], env=os.environ, stdout=subprocess.PIPE)
       out = p.stdout.read()
       print(out)    
@@ -429,7 +429,7 @@ try:
     coef_on_stoch_rsi = 1.3
     fibo_level = 0
     for market in selected_markets:
-            print(f'src:{market}')       
+            #print(f'src:{market}')       
             try:
                 df = bitget.load_data(coin=market, interval=tf)
                 df['volume_usdt'] = df['volume'] * df['close']
@@ -488,7 +488,7 @@ try:
         source_name = row[1]
         env_perc = row[2]
         last_volume_usdt = row[3]
-        print(f'env:{pair}')
+        #print(f'env:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test env_perc    
@@ -550,7 +550,7 @@ try:
         last_volume_usdt = row[3]
         coef_on_btc_rsi = row[4] 
         coef_on_stoch_rsi = row[5]   
-        print(f'fibo:{pair}')
+        #print(f'fibo:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
         
         for i in range(0, len(list_fibo_level)):
@@ -604,7 +604,7 @@ try:
         last_volume_usdt = row[3]
         coef_on_btc_rsi = row[4]
         fibo_level = row[5]
-        print(f'btc_rsi:{pair}')
+        #print(f'btc_rsi:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_btc_rsi    
@@ -666,7 +666,7 @@ try:
         coef_on_btc_rsi = row[4]
         coef_on_stoch_rsi = row[5]
         fibo_level = row[6]
-        print(f'stoch_rsi:{pair}')
+        #print(f'stoch_rsi:{pair}')
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test coef_on_stoch_rsi    
@@ -829,7 +829,7 @@ try:
           pair_list_not_enough_volume.append(row[0] + f'({row[6]})')
 
     pinescript += '\n    result\n'
-    print(pinescript)
+    #print(pinescript)
 
     text_file = open(pinescript_path, "w")
     text_file.write(pinescript)
@@ -1042,6 +1042,10 @@ try:
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.ID, "header-toolbar-save-load"))).click()  
     time.sleep(30)
     browser.close()
+
+    print('>>> backup assets.db3 and indicators.db3')
+    result = subprocess.run(["python3", "/home/doku/backtest_tools/backtest/single_coin/backup_db3.py"], capture_output=True, text=True)
+    print(result.stdout)
 
 except:
     print(traceback.format_exc())
