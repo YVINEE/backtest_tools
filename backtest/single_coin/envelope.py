@@ -963,12 +963,12 @@ try:
 
     time.sleep(2)
     editor.send_keys(Keys.CONTROL + 's')
-    time.sleep(2)
+    time.sleep(10)
 
     WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='add-script-to-chart']"))).click()
     time.sleep(10)  
     
-    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+    WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='watchlists-button']"))).click()
 
     time.sleep(4)
     clear_list_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Clear list')]")
@@ -987,7 +987,7 @@ try:
         ActionChains(browser).send_keys(Keys.ESCAPE).perform()
         time.sleep(2)
 
-        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='watchlists-button']"))).click()
         add_section_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Add section')]")
         time.sleep(2)
         if len(add_section_elements) > 0:
@@ -1014,7 +1014,7 @@ try:
         time.sleep(10)
         WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"[data-symbol-full='BITGET:{pair}']"))).click()
             
-        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='settings-button']"))).click()
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='watchlists-button']"))).click()
         time.sleep(2)
         add_section_elements = browser.find_elements(By.XPATH, "//*[contains(text(), 'Add section')]")
         if len(add_section_elements) > 0:
