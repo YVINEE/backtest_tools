@@ -17,53 +17,99 @@ import re
 import sqlite3
 import psutil
 import signal
+import mailtrap as mt
 from datetime import datetime, timedelta
 
 script_directory = os.path.abspath('')
+if os.name == 'nt':
+    node_path = "C:\\Program Files\\nodejs\\node.exe"
+    envelope_db_path = "D:\\Git\envelope\\database"
 
-database_path = os.path.join('/home/doku/envelope', 'database')
+else :
+    node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
+    envelope_db_path = "/home/doku/envelope/database"
+backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
+config_database_path = os.path.join(envelope_db_path, 'config.db3')
+pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
 
-config_database_path = os.path.join(database_path, 'config.db3')
-with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
-    cur = con.cursor()  
-    cur.execute("PRAGMA read_uncommitted = true;");     
-    
-    sql = "SELECT coin FROM config ORDER BY coin"
-    cur.execute(sql)
-    rows = cur.fetchall()
-    pair_list_in_config = [f'{row[0]}USDT' for row in rows]      
-    cur.close()  
-
-# %%
-print(pair_list_in_config)
-
-# %%
-pine_script_file_name = '/home/doku/envelope/database/pinescript.txt'
-f = open(pine_script_file_name)
-GetBotConfig = f.read()    
-f.close()
-
-# %%
-pattern = r"'(\w+USDT)'"
-matches = re.findall(pattern, GetBotConfig)
-
-pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
-print(pair_list_to_study)
-
-
-
-# %%
 try:
+    with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");     
+        
+        sql = "SELECT coin FROM config ORDER BY coin"
+        cur.execute(sql)
+        rows = cur.fetchall()
+        pair_list_in_config = [f'{row[0]}/USDT' for row in rows]      
+        cur.close()  
+
+    print(pair_list_in_config)
+    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'
+    print(sql_in_config)
+
+    print('>>> generate pinescript')
+    pattern = "    if (pair == '{pair}')"
+    pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level})\n"""  
+
+    pinescript = "GetBotConfig(string pair) =>"
+    pinescript += '\n    config result = na\n'        
+
+    with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");     
+        
+        sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE pair IN {sql_in_config}
+            UNION SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting WHERE pair NOT IN {sql_in_config} AND score IS NOT NULL) t WHERE rn <= 15"""
+
+        print(sql)
+        res = cur.execute(sql)
+        rows = cur.fetchall()
+        rows_list = [list(row) for row in rows]
+        cur.close()
+
+
+    pair_list_in_pinescript = []
+    pair_list_not_enough_volume = []
+    for row in rows_list:
+        pair_list_in_pinescript.append(f"'{row[0]}'")
+        pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
+        if row[6] < 1000 :
+          pair_list_not_enough_volume.append(row[0] + f'({row[6]})')
+
+    pinescript += '\n    result\n'
+    #print(pinescript)
+
+    text_file = open(pinescript_path, "w")
+    text_file.write(pinescript)
+    text_file.close()  
+    
+    if len(pair_list_not_enough_volume) > 0:    
+        mail = mt.Mail(
+            sender=mt.Address(email="mailtrap@demomailtrap.com", name="Bot"),
+            to=[mt.Address(email="mere.doku@gmail.com")],
+            subject='Volume insuffisant',
+            text=', '.join(pair_list_not_enough_volume),
+            category="Integration Test",
+        )
+        client = mt.MailtrapClient(token="d27ebfce94cfc54d8cf27a95cb073b36")
+        client.send(mail)                           
+                          
+    print('>>> update tradingview')
+    pair_list_in_config = [pair.replace('/','') for pair in pair_list_in_config] 
+    GetBotConfig = pinescript
+    pattern = r"'(\w+USDT)'"
+    matches = re.findall(pattern, GetBotConfig)
+    pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
     for proc in psutil.process_iter(['name', 'cmdline']):
         try:
             if proc.info['cmdline'] != None:
                 cmdline = ' '.join(map(str, proc.info['cmdline']))  # Convert each argument to string using map()
-                print(cmdline)
+                #print(cmdline)
                 if 'chrome' in cmdline :
                     proc.send_signal(signal.SIGTERM) # Terminate the process
                     print(f"Terminated process: {proc.pid}")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass   
+            pass    
 
     options = webdriver.ChromeOptions()
     options.add_argument("--password-store=basic")
