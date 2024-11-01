@@ -63,6 +63,7 @@ try:
     week_db_name_score = os.path.join(database_directory, 'week_backtesting_score.db3')
     backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
     pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
+    download_data_path_script = os.path.join(database_directory, 'download_data.js')
 
 # %%
     class SaEnvelope():
@@ -409,8 +410,7 @@ try:
     print('>>> download prices')
     files = glob.glob(files_path)
     for f in files:
-        os.remove(f)
-    download_data_path_script = os.path.join(database_directory, 'download_data.js')
+        os.remove(f)    
     for market in selected_markets:           
       #print(f'prices:{market}')
       p = subprocess.Popen([node_path, download_data_path_script, f'{market}'], env=os.environ, stdout=subprocess.PIPE)
@@ -801,7 +801,7 @@ try:
         cur.close() 
 
     print('>>> update tradingview')
-    result = subprocess.run(["python3", "/home/doku/backtest_tools/backtest/single_coin/update_tradingviewv2.py"], capture_output=True, text=True)
+    result = subprocess.run(["python3", "/home/doku/backtest_tools/backtest/single_coin/update_tradingview.py"], capture_output=True, text=True)
     print(result.stdout)
 
     print('>>> backup assets.db3 and indicators.db3')
