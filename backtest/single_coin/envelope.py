@@ -40,10 +40,9 @@ import signal
 
 try:
 
-# %%
     if os.name == 'nt':
-        node_path = "C:\\Program Files\\nodejs\\node.exe"
-        envelope_db_path = "D:\\Git\envelope\\database"
+        node_path = r"C:\Program Files\nodejs\node.exe"
+        envelope_db_path = r"D:\Git\envelope\database"
     
     else :
         node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
@@ -65,7 +64,6 @@ try:
     pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
     download_data_path_script = os.path.join(database_directory, 'download_data.js')
 
-# %%
     class SaEnvelope():
         def __init__(
             self,
@@ -169,9 +167,13 @@ try:
                 df.loc[df[f'ma_low_{i}'] > df['fibo_low'], f'ma_low_{i}'] = df['fibo_low']                     
         
             # saving the excel
-            # file_name = os.path.join(script_directory, 'df.xlsx')
-            # df.to_excel(file_name)
-            # print('DataFrame is written to Excel File successfully.')        
+            # if self.source_name == 'close' and self.envelopes[0] == 0.03 and pair == 'TAO/USDT:USDT':
+            #     print(pair)
+            #     print(self.source_name)
+            #     print(self.envelopes)                
+            #     file_name = os.path.join(script_directory, 'df.xlsx')
+            #     df.to_excel(file_name)
+            #     print('df is written to Excel File successfully.')        
         
             self.df = df    
             return self.df
@@ -379,7 +381,6 @@ try:
                 "days": df_days
             }      
             
-    # %%
     bitget = ExchangeDataManager(
         exchange_name=exchange_name, 
         path_download=database_directory
@@ -387,26 +388,30 @@ try:
     markets = bitget.exchange.load_markets()
     selected_markets = []
     for market in sorted(markets):
-      if 'USDT' in market and markets[market]['spot'] == True :
+      if 'USDT' in market and (markets[market]['spot'] == True or markets[market]['swap'] == True) :
         selected_markets.append(market)
-    #selected_markets = ['BTC/USDT','CATWIF/USDT']
+    #selected_markets = ['BTC/USDT','CATWIF/USDT','BTC/USDT:USDT','TAO/USDT:USDT']
 
-# %%
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
-      cur = con.cursor()  
-      cur.execute("PRAGMA read_uncommitted = true;");     
-      
-      sql = "SELECT coin FROM config ORDER BY coin"
-      res = cur.execute(sql)
-      rows = cur.fetchall()
-      rows_list = [list(row) for row in rows]
-      cur.close()
-      pair_list_in_config = []
-      for row in rows_list:
-        pair_list_in_config.append(f"{row[0]}/USDT")
+        cur = con.cursor()  
+        cur.execute("PRAGMA read_uncommitted = true;");     
+
+        sql = "SELECT coin FROM config ORDER BY coin"
+        res = cur.execute(sql)
+        rows = cur.fetchall()
+        rows_list = [list(row) for row in rows]
+        cur.close()
+        pair_list_in_config = []
+        for row in rows_list:
+            if row[0].endswith(".P"):
+                # Si le coin se termine par ".P", on l'enlève et on ajoute ":USDT" après "/USDT"
+                coin = row[0][:-2]  # Enlève les deux derniers caractères (".P")
+                pair_list_in_config.append(f"{coin}/USDT:USDT")
+            else:
+                # Si le coin ne se termine pas par ".P", on l'ajoute tel quel avec "/USDT"
+                pair_list_in_config.append(f"{row[0]}/USDT")
     sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'
 
-#%%
     print('>>> download prices')
     files = glob.glob(files_path)
     for f in files:
@@ -417,7 +422,6 @@ try:
       out = p.stdout.read()
       print(out)    
 
-# %%
     print('>>> create week_backtesting_src.db3')
     os.remove(week_db_name_src) if os.path.exists(week_db_name_src) else None
 
@@ -425,6 +429,7 @@ try:
     list_env_perc = [0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]
 
     df_btc = bitget.load_data(coin="BTC/USDT", interval=tf)
+    df_btc_p = bitget.load_data(coin="BTC/USDT:USDT", interval=tf)
     coef_on_btc_rsi = 1.6
     coef_on_stoch_rsi = 1.3
     fibo_level = 0
@@ -435,12 +440,19 @@ try:
                 df['volume_usdt'] = df['volume'] * df['close']
                 last_volume_usdt = round(df['volume_usdt'].rolling(window=48).mean().iloc[-1], 2)
                 if (last_volume_usdt >= 1000 or market in pair_list_in_config):
+                    if markets[market]['spot'] == True:
+                        current_df_btc = df_btc
+                        current_type = ["long"]
+                    else:
+                        current_df_btc = df_btc_p
+                        current_type = ["short"]
+
                     for i in range(0, len(list_source_name)) :
                         for j in range(0, len(list_env_perc)) :                        
                             strat = SaEnvelope( 
                                 df = df.loc[:],
-                                df_btc = df_btc,
-                                type=["long"],
+                                df_btc = current_df_btc,
+                                type= current_type,
                                 ma_base_window=5,
                                 envelopes=[list_env_perc[j]],
                                 source_name=list_source_name[i],
@@ -448,17 +460,22 @@ try:
                                 coef_on_stoch_rsi=coef_on_stoch_rsi,
                                 fibo_level=fibo_level                                
                             )
-                            strat.populate_indicators()
+                            strat.populate_indicators(market)
                             strat.populate_buy_sell()
                             bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                             
                             if bt_result is not None:
-                                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_src,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[j], source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)                        
+                                df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_src,pair=market, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=list_env_perc[j], source_name=list_source_name[i], coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi, fibo_level=fibo_level)
+                                # if list_source_name[i] == 'close' and list_env_perc[j] == 0.03:          
+                                #     file_name = os.path.join(script_directory, 'df_trades.xlsx')
+                                    #     df_trades.to_excel(file_name)
+                                #     print('df_trades is written to Excel File successfully.')        
+
             except FileNotFoundError:
                 print(f'FileNotFoundError for {market}')
 
 
-# %%
+
     con = sqlite3.connect(week_db_name_src, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     for market in selected_markets:
@@ -471,7 +488,7 @@ try:
     cur.close()
     con.close()
 
-# %%
+
     print('>>> create week_backtesting_env.db3')
     os.remove(week_db_name_env) if os.path.exists(week_db_name_env) else None
     shutil.copyfile(week_db_name_src, week_db_name_env)
@@ -500,8 +517,8 @@ try:
             if env_perc_to_test != env_perc :
                 strat = SaEnvelope( 
                     df = df.loc[:],
-                    df_btc = df_btc,
-                    type=["long"],
+                    df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
+                    type= ["short"] if row[0].endswith(":USDT") else ["long"],
                     ma_base_window=5,
                     envelopes=[i],
                     source_name=source_name,
@@ -509,7 +526,7 @@ try:
                     coef_on_stoch_rsi=coef_on_stoch_rsi,           
                     fibo_level=fibo_level    
                 )
-                strat.populate_indicators()
+                strat.populate_indicators(pair)
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
@@ -528,7 +545,7 @@ try:
     cur.close()
     con.close()    
 
-# %%
+
     print('>>> create week_backtesting_fibo.db3')
     
     os.remove(week_db_name_fibo) if os.path.exists(week_db_name_fibo) else None
@@ -556,8 +573,8 @@ try:
         for i in range(0, len(list_fibo_level)):
             strat = SaEnvelope( 
                 df = df.loc[:],
-                df_btc = df_btc,
-                type=["long"],
+                df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
+                type= ["short"] if row[0].endswith(":USDT") else ["long"],
                 ma_base_window=5,
                 envelopes=[env_perc],
                 source_name=source_name,
@@ -565,7 +582,7 @@ try:
                 coef_on_stoch_rsi=coef_on_stoch_rsi,
                 fibo_level=list_fibo_level[i]           
             )
-            strat.populate_indicators()
+            strat.populate_indicators(pair)
             strat.populate_buy_sell()
             bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
             if bt_result is not None:
@@ -583,7 +600,7 @@ try:
     cur.close()
     con.close()         
 
-# %%
+
     print('>>> create week_backtesting_btc_rsi.db3')
     
     os.remove(week_db_name_btc_rsi) if os.path.exists(week_db_name_btc_rsi) else None
@@ -616,8 +633,8 @@ try:
             if coef_on_btc_rsi_to_test != coef_on_btc_rsi :
                 strat = SaEnvelope( 
                     df = df.loc[:],
-                    df_btc = df_btc,
-                    type=["long"],
+                    df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
+                    type= ["short"] if row[0].endswith(":USDT") else ["long"],
                     ma_base_window=5,
                     envelopes=[env_perc],
                     source_name=source_name,
@@ -625,7 +642,7 @@ try:
                     coef_on_stoch_rsi=coef_on_stoch_rsi,           
                     fibo_level=fibo_level    
                 )
-                strat.populate_indicators()
+                strat.populate_indicators(pair)
                 strat.populate_buy_sell()
                 bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
                 if bt_result is not None:
@@ -643,7 +660,7 @@ try:
     cur.close()
     con.close()          
 
-# %%
+
     print('>>> create week_backtesting_stoch_rsi.db3')
 
     os.remove(week_db_name_stoch_rsi) if os.path.exists(week_db_name_stoch_rsi) else None
@@ -678,8 +695,8 @@ try:
             if coef_on_stoch_rsi_to_test != coef_on_stoch_rsi :
                 strat = SaEnvelope( 
                     df = df.loc[:],
-                    df_btc = df_btc,
-                    type=["long"],
+                    df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
+                    type= ["short"] if row[0].endswith(":USDT") else ["long"],
                     ma_base_window=5,
                     envelopes=[env_perc],
                     source_name=source_name,
@@ -705,7 +722,7 @@ try:
     cur.close()
     con.close()                         
   
-# %%
+
     print('>>> create week_backtesting_score.db3')
 
     os.remove(week_db_name_score) if os.path.exists(week_db_name_score) else None
@@ -735,7 +752,10 @@ try:
     with sqlite3.connect(config_database_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:      
         cur = con.cursor()  
         for row in rows_list:
-            coin = row[0].replace('/USDT','') 
+            if row[0].endswith(":USDT"):
+                coin = row[0].replace('/USDT:USDT','.P') 
+            else:
+                coin = row[0].replace('/USDT','') 
             sma_source = row[1]
             envelope_percent = row[2]
             coef_on_btc_rsi = row[3]
@@ -756,7 +776,6 @@ try:
         con.commit()    
         cur.close()    
 
-# %%
     print('>>> keep indicators history according week_backtesting100')     
 
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    

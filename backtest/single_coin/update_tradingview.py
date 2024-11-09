@@ -22,8 +22,8 @@ from datetime import datetime, timedelta
 
 script_directory = os.path.abspath('')
 if os.name == 'nt':
-    node_path = "C:\\Program Files\\nodejs\\node.exe"
-    envelope_db_path = "D:\\Git\envelope\\database"
+    node_path = r"C:\Program Files\nodejs\node.exe"
+    envelope_db_path = r"D:\Git\envelope\database"
 
 else :
     node_path = "/home/doku/.nvm/versions/node/v20.11.0/bin/node"
@@ -40,7 +40,15 @@ try:
         sql = "SELECT coin FROM config ORDER BY coin"
         cur.execute(sql)
         rows = cur.fetchall()
-        pair_list_in_config = [f'{row[0]}/USDT' for row in rows]      
+        pair_list_in_config = []
+        for row in rows:
+            if row[0].endswith(".P"):
+                # Si le coin se termine par ".P", on l'enlève et on ajoute ":USDT" après "/USDT"
+                coin = row[0][:-2]  # Enlève les deux derniers caractères (".P")
+                pair_list_in_config.append(f"{coin}/USDT:USDT")
+            else:
+                # Si le coin ne se termine pas par ".P", on l'ajoute tel quel avec "/USDT"
+                pair_list_in_config.append(f"{row[0]}/USDT")  
         cur.close()  
 
     print(pair_list_in_config)
@@ -72,7 +80,8 @@ try:
     pair_list_not_enough_volume = []
     for row in rows_list:
         pair_list_in_pinescript.append(f"'{row[0]}'")
-        pinescript += pattern.format(pair=row[0].replace('/','').replace('$',''), source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
+        pair = row[0].replace('/','').replace('$','').replace(':USDT','.P')
+        pinescript += pattern.format(pair=pair, source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
         if row[6] < 1000 :
           pair_list_not_enough_volume.append(row[0] + f'({row[6]})')
 
@@ -95,10 +104,13 @@ try:
         client.send(mail)                           
                           
     print('>>> update tradingview')
-    pair_list_in_config = [pair.replace('/','') for pair in pair_list_in_config] 
+    pair_list_in_config = [pair.replace('/','').replace('$','').replace(':USDT','.P') for pair in pair_list_in_config] 
     GetBotConfig = pinescript
-    pattern = r"'(\w+USDT)'"
+    pattern = r"'(\w+USDT(?:\.P)?)'"
     matches = re.findall(pattern, GetBotConfig)
+    print(matches)
+
+
     pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
     for proc in psutil.process_iter(['name', 'cmdline']):
         try:
