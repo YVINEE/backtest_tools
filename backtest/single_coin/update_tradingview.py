@@ -37,23 +37,24 @@ try:
         cur = con.cursor()  
         cur.execute("PRAGMA read_uncommitted = true;");     
         
-        sql = "SELECT coin FROM config ORDER BY coin"
+        sql = "SELECT coin, sma_source, envelope_percent, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM config ORDER BY coin"
         cur.execute(sql)
         rows = cur.fetchall()
-        pair_list_in_config = []
+        #pair_list_in_config = []
+        dico_pair_in_config = {}
+
         for row in rows:
+            pair = f"{row[0]}/USDT"
             if row[0].endswith(".P"):
                 # Si le coin se termine par ".P", on l'enlève et on ajoute ":USDT" après "/USDT"
                 coin = row[0][:-2]  # Enlève les deux derniers caractères (".P")
-                pair_list_in_config.append(f"{coin}/USDT:USDT")
-            else:
-                # Si le coin ne se termine pas par ".P", on l'ajoute tel quel avec "/USDT"
-                pair_list_in_config.append(f"{row[0]}/USDT")  
+                pair = f"{coin}/USDT:USDT"
+            dico_pair_in_config[pair] = [row[1], row[2], row[3], row[4], row[5]]  
         cur.close()  
 
-    print(pair_list_in_config)
-    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in pair_list_in_config) + ')'
-    print(sql_in_config)
+    #print(dico_pair_in_config.keys())
+    sql_in_config = '(' + ', '.join("'"+pair+"'" for pair in dico_pair_in_config.keys()) + ')'
+    #print(sql_in_config)
 
     print('>>> generate pinescript')
     pattern = "    if (pair == '{pair}')"
@@ -69,10 +70,21 @@ try:
         sql = f"""SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM backtesting WHERE pair IN {sql_in_config}
             UNION SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, last_volume_usdt FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting WHERE pair NOT IN {sql_in_config} AND score IS NOT NULL) t WHERE rn <= 15"""
 
-        print(sql)
+        #print(sql)
         res = cur.execute(sql)
-        rows = cur.fetchall()
-        rows_list = [list(row) for row in rows]
+        rows = cur.fetchall()        
+        rows_list = []
+        
+        for row in rows:
+            pair = row[0]
+            list_row = list(row)
+            if pair in dico_pair_in_config:
+                list_row[1]  = dico_pair_in_config[pair][0]
+                list_row[2]  = dico_pair_in_config[pair][1]
+                list_row[3]  = dico_pair_in_config[pair][2]
+                list_row[4]  = dico_pair_in_config[pair][3]
+                list_row[5]  = dico_pair_in_config[pair][4]
+            rows_list.append(list_row)            
         cur.close()
 
 
@@ -104,7 +116,7 @@ try:
         client.send(mail)                           
                           
     print('>>> update tradingview')
-    pair_list_in_config = [pair.replace('/','').replace('$','').replace(':USDT','.P') for pair in pair_list_in_config] 
+    pair_list_in_config = [pair.replace('/','').replace('$','').replace(':USDT','.P') for pair in dico_pair_in_config.keys()] 
     GetBotConfig = pinescript
     pattern = r"'(\w+USDT(?:\.P)?)'"
     matches = re.findall(pattern, GetBotConfig)
@@ -206,7 +218,7 @@ try:
         match = re.match(start_date_pattern, line)
         if match:
             old_date = match.group(1)
-            print("old_date", old_date)
+            #print("old_date", old_date)
             new_line = re.sub(old_date, date_one_week_ago, line)
             lines[i] = new_line
 
@@ -305,7 +317,6 @@ try:
 
 except Exception:
     print(traceback.format_exc())
-    browser.close()
     pass
 
 
