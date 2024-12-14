@@ -57,12 +57,21 @@ try:
     #print(sql_in_config)
 
     print('>>> generate pinescript')
-    pattern = "    if (pair == '{pair}')"
-    pattern += "\n        result := config.new('{source_name}', {env_perc}, {coef_on_btc_rsi}, {coef_on_stoch_rsi}, {fibo_level})\n"""  
+    #example: 
+    # src_0X0 = input.source(hl2, title = 'Source', inline = 'line1', group = '0X0USDT')
+    # envelope_pct_0X0 = input.float(0.023, 'Env', step = 0.001, inline = 'line1', group = '0X0USDT')
+    # fibo_level_0X0 = input.float(0, title = 'Fibo', options = [0, 0.236, 0.382, 0.5, 0.618, 0.7, 1], inline = 'line2', group = '0X0USDT')
+    # coef_on_btc_rsi_0X0 = input.float(1.6, 'BTC RSI', step = 0.1, inline = 'line2', group = '0X0USDT')
+    # coef_on_stoch_rsi_0X0 = input.float(1.3, 'Stoch RSI', step = 0.1, inline = 'line2', group = '0X0USDT')    
+    inputs_pattern = "src_{pair} = input.source({source_name}, title = 'Source', inline = 'line1', group = '{pair}', display = display.none)\n"
+    inputs_pattern += "envelope_pct_{pair} = input.float({env_perc}, 'Env', step = 0.001, inline = 'line1', group = '{pair}', display = display.none)\n"
+    inputs_pattern += "fibo_level_{pair} = input.float({fibo_level}, title = 'Fibo', options = [0, 0.236, 0.382, 0.5, 0.618, 0.7, 1], inline = 'line2', group = '{pair}', display = display.none)\n"
+    inputs_pattern += "coef_on_btc_rsi_{pair} = input.float({coef_on_btc_rsi}, 'BTC RSI', step = 0.1, inline = 'line2', group = '{pair}', display = display.none)\n"
+    inputs_pattern += "coef_on_stoch_rsi_{pair} = input.float({coef_on_stoch_rsi}, 'Stoch RSI', step = 0.1, inline = 'line2', group = '{pair}', display = display.none)\n\n"
 
-    pinescript = "GetBotConfig(string pair) =>"
-    pinescript += '\n    config result = na\n'        
-
+    #example: '0X0USDT' => config.new(GetSourceName(src_0X0), envelope_pct_0X0,  fibo_level_0X0, coef_on_btc_rsi_0X0, coef_on_stoch_rsi_0X0)
+    config_pattern = "        '{pair}' => config.new(GetSourceName(src_{pair}), envelope_pct_{pair},  fibo_level_{pair}, coef_on_btc_rsi_{pair}, coef_on_stoch_rsi_{pair})\n"    
+     
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
         cur = con.cursor()  
         cur.execute("PRAGMA read_uncommitted = true;");     
@@ -75,6 +84,7 @@ try:
         rows = cur.fetchall()        
         rows_list = []
         
+        #pour récuperer les paramètres de config.db3 plutot que celui de backtest car j'ai pu les changer manuellment
         for row in rows:
             pair = row[0]
             list_row = list(row)
@@ -87,17 +97,30 @@ try:
             rows_list.append(list_row)            
         cur.close()
 
-
     pair_list_in_pinescript = []
     pair_list_not_enough_volume = []
+    inputs_pinescript = ""
+    configs_pinescript = ""
+    
     for row in rows_list:
         pair_list_in_pinescript.append(f"'{row[0]}'")
         pair = row[0].replace('/','').replace('$','').replace(':USDT','.P')
-        pinescript += pattern.format(pair=pair, source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
+        inputs_pinescript += inputs_pattern.format(pair=pair, source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
+        configs_pinescript += config_pattern.format(pair=pair)
         if row[6] < 1000 :
-          pair_list_not_enough_volume.append(row[0] + f'({row[6]})')
+          pair_list_not_enough_volume.append(row[0] + f'({row[6]})')        
 
-    pinescript += '\n    result\n'
+    #inputs pour les pairs inconnus
+    # 5 hl2 0.023 0.382 1.6 1.3
+    inputs_pinescript += inputs_pattern.format(pair='unknown', source_name='hl2', env_perc=0.023, coef_on_btc_rsi=1.6, coef_on_stoch_rsi=1.3, fibo_level=0.382)
+
+    #config pour les pairs inconnus
+    configs_pinescript += '        => config.new(GetSourceName(src_unknown), envelope_pct_unknown,  fibo_level_unknown, coef_on_btc_rsi_unknown, coef_on_stoch_rsi_unknown)\n'    
+
+    pinescript = inputs_pinescript
+    pinescript += "GetBotConfig(string pair) =>"
+    pinescript += '\n    switch pair\n'
+    pinescript += configs_pinescript
     #print(pinescript)
 
     text_file = open(pinescript_path, "w")
@@ -118,8 +141,8 @@ try:
     print('>>> update tradingview')
     pair_list_in_config = [pair.replace('/','').replace('$','').replace(':USDT','.P') for pair in dico_pair_in_config.keys()] 
     GetBotConfig = pinescript
-    pattern = r"'(\w+USDT(?:\.P)?)'"
-    matches = re.findall(pattern, GetBotConfig)
+    config_pattern = r"'(\w+USDT(?:\.P)?)'"
+    matches = re.findall(config_pattern, GetBotConfig)
     print(matches)
 
 
