@@ -104,7 +104,7 @@ try:
     
     for row in rows_list:
         pair_list_in_pinescript.append(f"'{row[0]}'")
-        pair = row[0].replace('/','').replace('$','').replace(':USDT','.P')
+        pair = row[0].replace('/','').replace('$','').replace(':USDT','_P')
         inputs_pinescript += inputs_pattern.format(pair=pair, source_name=row[1], env_perc=row[2], coef_on_btc_rsi=row[3], coef_on_stoch_rsi=row[4], fibo_level=row[5])
         configs_pinescript += config_pattern.format(pair=pair)
         if row[6] < 1000 :
@@ -230,8 +230,8 @@ try:
     update_date = "update_date = '" + today.strftime('%A %d %b %X') + "'"
     new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
 
-    # Pattern to match the line starting with "startDate = input.time(timestamp("
-    start_date_pattern = r'^startDate = input\.time\(timestamp\("(\d{4}-\d{2}-\d{2})"\),'
+    # Pattern to match the line starting with "startDate = input.time(timestamp('
+    start_date_pattern = r'^startDate = input\.time\(timestamp\(\'(\d{4}-\d{2}-\d{2})\'\),'
 
     # Split the original string into lines
     lines = new_script.split('\n')
