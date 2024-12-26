@@ -19,7 +19,7 @@ import sqlite3
 import psutil
 import signal
 import mailtrap as mt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import socket
 import requests
 
@@ -180,7 +180,7 @@ try:
     GetBotConfig = pinescript
     config_pattern = r"'(\w+USDT(?:\.P)?)'"
     matches = re.findall(config_pattern, GetBotConfig)
-    print(matches)
+    #print(matches)
 
 
     pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
@@ -251,11 +251,10 @@ try:
         print("Open Pine Editor is NOT found")
 
     time.sleep(2)
-    view_lines = WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text")))
-    browser.execute_script("arguments[0].click();", view_lines)
-
-    time.sleep(2)
-    editor = browser.switch_to.active_element
+    view_lines = WebDriverWait(browser, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))
+    )
+    ActionChains(browser).move_to_element(view_lines).click().perform()
     time.sleep(2)
     ActionChains(browser).key_down(Keys.CONTROL).send_keys('o').key_up(Keys.CONTROL).perform()
     time.sleep(2)
@@ -263,12 +262,11 @@ try:
     time.sleep(2)
     ActionChains(browser).send_keys(Keys.RETURN).perform()
     time.sleep(4)
-
-    view_lines = WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text")))
-    browser.execute_script("arguments[0].click();", view_lines)
-
+    view_lines = WebDriverWait(browser, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, ".view-lines.monaco-mouse-cursor-text"))
+    )
+    ActionChains(browser).move_to_element(view_lines).click().perform()
     editor = browser.switch_to.active_element
-
     time.sleep(2)
     editor.send_keys(Keys.CONTROL + 'a')
     time.sleep(2)
@@ -280,7 +278,8 @@ try:
     date_one_week_ago = one_week_ago.strftime("%Y-%m-%d")
 
     update_date = "update_date = '" + today.strftime('%A %d %b %X') + "'"
-    new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
+    rfc_2822_utc_update_date =  "rfc_2822_utc_update_date = '" + datetime.now(timezone.utc).strftime('%d %b %Y %X') + "'"
+    new_script = re.sub('(<GetBotConfig>).*(//</GetBotConfig>)', rf'\1\n{update_date}\n{rfc_2822_utc_update_date}\n{GetBotConfig}\2', script,  flags=re.DOTALL)
 
     # Pattern to match the line starting with "startDate = input.time(timestamp('
     start_date_pattern = r'^startDate = input\.time\(timestamp\(\'(\d{4}-\d{2}-\d{2})\'\),'
@@ -299,6 +298,8 @@ try:
 
     # Join the lines back into a string
     new_script = '\n'.join(lines)    
+
+    #print(new_script)
 
     pyperclip.copy(new_script)
     editor.send_keys(Keys.DELETE)
