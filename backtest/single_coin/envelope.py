@@ -59,10 +59,13 @@ try:
     week_db_name_fibo =  os.path.join(database_directory, 'week_backtesting_fibo.db3')
     week_db_name_btc_rsi =  os.path.join(database_directory, 'week_backtesting_btc_rsi.db3')
     week_db_name_stoch_rsi =  os.path.join(database_directory, 'week_backtesting_stoch_rsi.db3')
+    week_db_name_last_optimization = os.path.join(database_directory, 'week_backtesting_last_optimization.db3')
     week_db_name_score = os.path.join(database_directory, 'week_backtesting_score.db3')
     backtest_path = os.path.join(envelope_db_path, 'week_backtesting100.db3')
     pinescript_path = os.path.join(envelope_db_path, 'pinescript.txt')
+    heatmap_path = os.path.join(envelope_db_path, 'heatmap.db3')
     download_data_path_script = os.path.join(database_directory, 'download_data.js')
+    list_fibo_level = [0.236, 0.382, 0.5, 0.618, 0.7, 1]
 
     class SaEnvelope():
         def __init__(
@@ -520,7 +523,7 @@ try:
                     df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
                     type= ["short"] if row[0].endswith(":USDT") else ["long"],
                     ma_base_window=5,
-                    envelopes=[i],
+                    envelopes=[env_perc_to_test],
                     source_name=source_name,
                     coef_on_btc_rsi=coef_on_btc_rsi,
                     coef_on_stoch_rsi=coef_on_stoch_rsi,           
@@ -551,7 +554,6 @@ try:
     os.remove(week_db_name_fibo) if os.path.exists(week_db_name_fibo) else None
     shutil.copyfile(week_db_name_env, week_db_name_fibo)
     
-    list_fibo_level = [0.236, 0.382, 0.5, 0.618, 0.7, 1]
     con = sqlite3.connect(week_db_name_fibo, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     cur = con.cursor()  
     cur.execute(f"SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi FROM backtesting ORDER BY pair")
@@ -720,11 +722,9 @@ try:
             cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")                     
     con.commit()
     cur.close()
-    con.close()                         
-  
+    con.close()
 
     print('>>> create week_backtesting_score.db3')
-
     os.remove(week_db_name_score) if os.path.exists(week_db_name_score) else None
     shutil.copyfile(week_db_name_stoch_rsi, week_db_name_score)
     
@@ -735,9 +735,88 @@ try:
     cur.close()    
     con.close() 
 
-    shutil.copyfile(week_db_name_score, backtest_path)
+        
 
-# %%
+    print('>>> last optimization for coins in config and creation of heatmap')
+    os.remove(week_db_name_last_optimization) if os.path.exists(week_db_name_last_optimization) else None
+    shutil.copyfile(week_db_name_score, week_db_name_last_optimization)
+
+    con = sqlite3.connect(week_db_name_last_optimization, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+
+    sql = f"""SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM backtesting WHERE pair IN {sql_in_config}
+        UNION SELECT pair, source_name, env_perc, last_volume_usdt, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY usd_per_day DESC) AS rn FROM backtesting WHERE pair NOT IN {sql_in_config} AND score IS NOT NULL) t WHERE rn <= 15"""
+
+    cur.execute(sql)
+    rows = cur.fetchall()
+    rows_list = [list(row) for row in rows]
+    cur.close()
+    con.close() 
+
+    for row in rows_list:
+        pair = row[0]
+        source_name = row[1]
+        env_perc = row[2]
+        last_volume_usdt = row[3]
+        coef_on_btc_rsi = row[4]
+        coef_on_stoch_rsi = row[5]
+        fibo_level = row[6]        
+        df = bitget.load_data(coin=pair, interval=tf)
+
+        # test env_perc and fibo_level
+        start_env = round(env_perc - 0.004, 5) #python gros pb d'arrondi avec les float....    
+        end_env = round(env_perc + 0.004, 5)
+        
+        for i in np.linspace(start_env, end_env, 9):
+            for j in range(0, len(list_fibo_level)):
+                env_perc_to_test = round(i, 5) #python gros pb d'arrondi avec les float....    
+                if env_perc_to_test != env_perc or fibo_level != list_fibo_level[j]:
+                    strat = SaEnvelope( 
+                        df = df.loc[:],
+                        df_btc = df_btc_p if row[0].endswith(":USDT") else df_btc,
+                        type= ["short"] if row[0].endswith(":USDT") else ["long"],
+                        ma_base_window=5,
+                        envelopes=[env_perc_to_test],
+                        source_name=source_name,
+                        coef_on_btc_rsi=coef_on_btc_rsi,
+                        coef_on_stoch_rsi=coef_on_stoch_rsi,           
+                        fibo_level=list_fibo_level[j]
+                    )
+                    strat.populate_indicators(pair)
+                    strat.populate_buy_sell()
+                    bt_result = strat.run_backtest(initial_wallet=100, leverage=1)
+                    if bt_result is not None:
+                        df_trades, df_days = basic_single_asset_backtest(db_name=week_db_name_last_optimization,pair=pair, trades=bt_result['trades'], days=bt_result['days'], last_volume_usdt=last_volume_usdt, env_perc=env_perc_to_test, source_name=source_name, coef_on_btc_rsi=coef_on_btc_rsi, coef_on_stoch_rsi=coef_on_stoch_rsi,fibo_level=list_fibo_level[j])                    
+
+
+    
+    #create heatmap.db3 and fill heatmap
+    os.remove(heatmap_path) if os.path.exists(heatmap_path) else None
+    con_heatmap = sqlite3.connect(heatmap_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur_heatmap = con_heatmap.cursor()  
+    cur_heatmap.execute('CREATE TABLE IF NOT EXISTS heatmap (pair TEXT NOT NULL, score NUMERIC, source_name TEXT, env_perc NUMERIC, coef_on_btc_rsi NUMERIC, coef_on_stoch_rsi NUMERIC, fibo_level NUMERIC, startDate timestamp, final_wallet NUMERIC, usd_per_day NUMERIC, last_volume_usdt NUMERIC, total_trades NUMERIC, win_rate NUMERIC, avg_profit NUMERIC, sharpe_ratio NUMERIC, worst_drawdown NUMERIC, best_trade NUMERIC, worst_trade NUMERIC, total_fees NUMERIC, updateDate timestamp NOT NULL)')
+         
+    
+    con = sqlite3.connect(week_db_name_last_optimization, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+    cur = con.cursor()  
+    for row in rows_list:
+        pair = row[0]
+        cur.execute(f"SELECT pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, startDate, final_wallet, usd_per_day, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate FROM backtesting WHERE pair = '{pair}'")
+        rows_heatmap = cur.fetchall()
+        for row_heatmap in rows_heatmap:
+            cur_heatmap.execute(f"INSERT INTO heatmap (pair, source_name, env_perc, coef_on_btc_rsi, coef_on_stoch_rsi, fibo_level, startDate, final_wallet, usd_per_day, last_volume_usdt, total_trades, win_rate, avg_profit, sharpe_ratio, worst_drawdown, best_trade, worst_trade, total_fees, updateDate) VALUES ('{row_heatmap[0]}', '{row_heatmap[1]}', {row_heatmap[2]}, {row_heatmap[3]}, {row_heatmap[4]}, {row_heatmap[5]}, '{row_heatmap[6]}', {row_heatmap[7]}, {row_heatmap[8]}, {row_heatmap[9]}, {row_heatmap[10]}, {row_heatmap[11]}, {row_heatmap[12]}, {row_heatmap[13]}, {row_heatmap[14]}, {row_heatmap[15]}, {row_heatmap[16]}, {row_heatmap[17]}, '{row_heatmap[18]}')")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")            
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")                     
+    con.commit()
+    cur.close()
+    con.close()
+    con_heatmap.commit()
+    cur_heatmap.close()
+    con_heatmap.close()
+    shutil.copyfile(week_db_name_last_optimization, backtest_path)
+
     print('>>> update config according week_backtesting100')     
 
     with sqlite3.connect(backtest_path, 10, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as con:    
@@ -817,7 +896,7 @@ try:
             res = cur.execute(sql)
             
         con.commit()    
-        cur.close() 
+        cur.close()
 
     print('>>> update tradingview')
     result = subprocess.run(["python3", "/home/doku/backtest_tools/backtest/single_coin/update_tradingview.py"], capture_output=True, text=True)
@@ -826,6 +905,6 @@ try:
     print('>>> backup assets.db3 and indicators.db3')
     result = subprocess.run(["python3", "/home/doku/backtest_tools/backtest/single_coin/backup_db3.py"], capture_output=True, text=True)
     print(result.stdout)
-
+     
 except:
     print(traceback.format_exc())
