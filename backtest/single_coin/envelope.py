@@ -735,8 +735,6 @@ try:
     cur.close()    
     con.close() 
 
-        
-
     print('>>> last optimization for coins in config and creation of heatmap')
     os.remove(week_db_name_last_optimization) if os.path.exists(week_db_name_last_optimization) else None
     shutil.copyfile(week_db_name_score, week_db_name_last_optimization)
@@ -808,7 +806,8 @@ try:
         cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND final_wallet != (SELECT MAX(final_wallet) FROM backtesting WHERE pair = '{pair}')")
         cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND sharpe_ratio != (SELECT MAX(sharpe_ratio) FROM backtesting WHERE pair = '{pair}')")
         cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND coef_on_stoch_rsi != (SELECT MAX(coef_on_stoch_rsi) FROM backtesting WHERE pair = '{pair}')")            
-        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")                     
+        cur.execute(f"DELETE FROM backtesting WHERE pair = '{pair}' AND ROWID != (SELECT MAX(ROWID) FROM backtesting WHERE pair = '{pair}')")
+    cur.execute("UPDATE backtesting SET score = usd_per_day + sharpe_ratio - worst_drawdown WHERE usd_per_day >= 10 AND worst_drawdown <= 15")
     con.commit()
     cur.close()
     con.close()
