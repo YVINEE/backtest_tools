@@ -38,6 +38,15 @@ import pyperclip
 import psutil
 import signal
 
+def adapt_datetime(dt):
+    return dt.isoformat()
+
+def convert_datetime(s):
+    return datetime.fromisoformat(s.decode())
+#correction => DeprecationWarning: The default timestamp converter is deprecated as of Python 3.12;
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_converter("timestamp", convert_datetime)    
+
 try:
 
     if os.name == 'nt':
@@ -762,10 +771,10 @@ try:
         df = bitget.load_data(coin=pair, interval=tf)
 
         # test env_perc and fibo_level
-        start_env = round(env_perc - 0.004, 5) #python gros pb d'arrondi avec les float....    
-        end_env = round(env_perc + 0.004, 5)
+        start_env = round(env_perc - 0.01, 5) #python gros pb d'arrondi avec les float....    
+        end_env = round(env_perc + 0.01, 5)
         
-        for i in np.linspace(start_env, end_env, 9):
+        for i in np.linspace(start_env, end_env, 21):
             for j in range(0, len(list_fibo_level)):
                 env_perc_to_test = round(i, 5) #python gros pb d'arrondi avec les float....    
                 if env_perc_to_test != env_perc or fibo_level != list_fibo_level[j]:
