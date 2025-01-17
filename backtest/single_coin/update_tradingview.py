@@ -177,13 +177,16 @@ try:
                           
     print('>>> update tradingview')
     pair_list_in_config = [pair.replace('/','').replace('$','').replace(':USDT','.P') for pair in dico_pair_in_config.keys()] 
+    #print("pair_list_in_config",pair_list_in_config)
     GetBotConfig = pinescript
-    config_pattern = r"'(\w+USDT(?:\.P)?)'"
+    config_pattern = r"'(\w+USDT(?:\_P)?)'"
     matches = re.findall(config_pattern, GetBotConfig)
-    #print(matches)
+    #print("matches", matches)
 
 
     pair_list_to_study = sorted(list(set(matches) - set(pair_list_in_config)))
+    pair_list_to_study = [pair.replace('USDT_P', 'USDT.P') for pair in pair_list_to_study]
+    #print("pair_list_to_study", pair_list_to_study)
 
     chrome_already_open = False
     options = webdriver.ChromeOptions()
