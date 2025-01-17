@@ -450,7 +450,11 @@ try:
             try:
                 df = bitget.load_data(coin=market, interval=tf)
                 df['volume_usdt'] = df['volume'] * df['close']
-                last_volume_usdt = round(df['volume_usdt'].rolling(window=48).mean().iloc[-1], 2)
+                if len(df) >= 48:
+                    last_volume_usdt = round(df['volume_usdt'].rolling(window=48).mean().iloc[-1], 2)
+                else:
+                    last_volume_usdt = 0
+                
                 if (last_volume_usdt >= 1000 or market in pair_list_in_config):
                     if markets[market]['spot'] == True:
                         current_df_btc = df_btc
